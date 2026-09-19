@@ -2,9 +2,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
-using ExplorerAlt.Shell;
+using ExplorerCover.Shell;
 
-namespace ExplorerAlt;
+namespace ExplorerCover;
 
 public sealed class MainWindow : Window
 {
@@ -14,7 +14,7 @@ public sealed class MainWindow : Window
 
     public MainWindow(string leftPath, string rightPath)
     {
-        Title = "Explorer Alt — 2ペイン試作";
+        Title = "explorer_cover — 2ペイン試作";
         Width = 1200; Height = 740; MinWidth = 700; MinHeight = 380;
         FontFamily = new FontFamily("Yu Gothic UI"); FontSize = 13;
         var root = new DockPanel();

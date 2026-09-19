@@ -5,7 +5,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 
-namespace ExplorerAlt.Shell;
+namespace ExplorerCover.Shell;
 
 public sealed class ExplorerHost : HwndHost
 {

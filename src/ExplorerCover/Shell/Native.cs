@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Interop;
 
-namespace ExplorerAlt.Shell;
+namespace ExplorerCover.Shell;
 
 [StructLayout(LayoutKind.Sequential)]
 public struct NativeRect { public int Left, Top, Right, Bottom; }

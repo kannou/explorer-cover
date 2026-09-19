@@ -3,9 +3,9 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using ExplorerAlt.Shell;
+using ExplorerCover.Shell;
 
-namespace ExplorerAlt;
+namespace ExplorerCover;
 
 public sealed class BrowserPane : Grid, IDisposable
 {

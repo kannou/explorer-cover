@@ -12,7 +12,7 @@ public static class LayoutInput {
 '@
 $all = [System.Windows.Automation.Condition]::TrueCondition
 $scope = [System.Windows.Automation.TreeScope]::Descendants
-$window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $ProcessId -and $_.Current.Name -like 'Explorer Alt*' } | Select-Object -First 1
+$window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $ProcessId -and $_.Current.Name -like 'explorer_cover*' } | Select-Object -First 1
 [LayoutInput]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle) | Out-Null
 $lists = @($window.FindAll($scope,$all) | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::List })
 $before = $lists[0].Current.BoundingRectangle.Width

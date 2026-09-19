@@ -13,7 +13,7 @@ public static class MenuInput {
 $all = [System.Windows.Automation.Condition]::TrueCondition
 $scope = [System.Windows.Automation.TreeScope]::Descendants
 $root = [System.Windows.Automation.AutomationElement]::RootElement
-$window = $root.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $ProcessId -and $_.Current.Name -like 'Explorer Alt*' } | Select-Object -First 1
+$window = $root.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $ProcessId -and $_.Current.Name -like 'explorer_cover*' } | Select-Object -First 1
 [MenuInput]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle) | Out-Null
 function Wait-Until([scriptblock]$Check) {
  $deadline = [DateTime]::UtcNow.AddSeconds(10)

@@ -11,7 +11,7 @@ public static class ImeTestInput {
 '@
 $all = [System.Windows.Automation.Condition]::TrueCondition
 $scope = [System.Windows.Automation.TreeScope]::Descendants
-$window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $ProcessId -and $_.Current.Name -like 'Explorer Alt*' } | Select-Object -First 1
+$window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $ProcessId -and $_.Current.Name -like 'explorer_cover*' } | Select-Object -First 1
 [ImeTestInput]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle) | Out-Null
 [System.Windows.Forms.SendKeys]::SendWait('^l')
 Start-Sleep -Milliseconds 300

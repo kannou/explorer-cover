@@ -5,5 +5,5 @@ if (!(Test-Path -LiteralPath $sdk)) { $sdk = (Get-Command dotnet -ErrorAction St
 $env:DOTNET_ROOT = Split-Path -Parent $sdk
 $env:DOTNET_CLI_HOME = Join-Path $PSScriptRoot '.tools\cli'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
-& $sdk run --project (Join-Path $PSScriptRoot 'src\ExplorerAlt\ExplorerAlt.csproj') --configuration Release -- $LeftPath $RightPath
+& $sdk run --project (Join-Path $PSScriptRoot 'src\ExplorerCover\ExplorerCover.csproj') --configuration Release -- $LeftPath $RightPath
 exit $LASTEXITCODE

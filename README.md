@@ -1,6 +1,6 @@
-# Explorer Alt
+# explorer_cover
 
-C#＋WPFで外枠を作り、Windows Shellの`IExplorerBrowser`を左右に埋め込んだファイラーの試作です。
+C#＋WPFで外枠を作り、Windows Shellの`IExplorerBrowser`を左右に埋め込んだファイラーの試作です。プロジェクト名の`explorer_cover`は、Explorerの閲覧・操作機能を包み、配置と状態管理を自分好みにする外枠を表します。
 
 現在は「2ペインの実操作を試す」段階です。タブと状態保存は、試用結果を受けて次の段階で実装します。
 
@@ -59,18 +59,18 @@ PowerShellから左右の場所を指定する場合:
 
 ```powershell
 $env:DOTNET_CLI_HOME = "$PWD\.tools\cli"
-.\.tools\dotnet\dotnet.exe build .\src\ExplorerAlt\ExplorerAlt.csproj -c Release
+.\.tools\dotnet\dotnet.exe build .\src\ExplorerCover\ExplorerCover.csproj -c Release
 ```
 
 検証結果は[検証記録](docs/VERIFICATION.md)に記載しています。`scripts/Verify-*.ps1`はWindowsのUI Automationを使う開発用スクリプトです。デスクトップ上の試作用ウィンドウと検証用フォルダーを操作するため、通常の操作と同時に実行しないでください。試用はこれらを実行せず`trial.cmd`だけで始められます。
 
-診断ログが必要な場合は、起動前に`EXPLORER_ALT_LOG`へ書き込み可能なログファイルの絶対パスを指定します。初期化、移動、エラー、終了処理を記録します。通常起動ではログを書きません。
+診断ログが必要な場合は、起動前に`EXPLORER_COVER_LOG`へ書き込み可能なログファイルの絶対パスを指定します。初期化、移動、エラー、終了処理を記録します。通常起動ではログを書きません。
 
 ## 構成
 
-- `src/ExplorerAlt/MainWindow.cs`: 2ペイン配置とキーの振り分け。
-- `src/ExplorerAlt/BrowserPane.cs`: パス入力、状態表示、フォーカス。
-- `src/ExplorerAlt/Shell/ExplorerHost.cs`: HWND、COM、シェルのイベントと寿命管理。
-- `src/ExplorerAlt/Shell/Native.cs`: Windows SDKに基づくCOMとWin32の定義。
+- `src/ExplorerCover/MainWindow.cs`: 2ペイン配置とキーの振り分け。
+- `src/ExplorerCover/BrowserPane.cs`: パス入力、状態表示、フォーカス。
+- `src/ExplorerCover/Shell/ExplorerHost.cs`: HWND、COM、シェルのイベントと寿命管理。
+- `src/ExplorerCover/Shell/Native.cs`: Windows SDKに基づくCOMとWin32の定義。
 
 シェルのメソッド定義は[MicrosoftのWindows SDKヘッダー](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/um/ShObjIdl_core.h)を参照しています。

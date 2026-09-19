@@ -1,12 +1,12 @@
 using System.IO;
 
-namespace ExplorerAlt;
+namespace ExplorerCover;
 
 internal static class DiagnosticLog
 {
     internal static void Write(string message)
     {
-        var path = Environment.GetEnvironmentVariable("EXPLORER_ALT_LOG");
+        var path = Environment.GetEnvironmentVariable("EXPLORER_COVER_LOG");
         if (string.IsNullOrEmpty(path)) return;
         try { File.AppendAllText(path, $"{DateTime.Now:O} {message}{Environment.NewLine}"); }
         catch (IOException) { }

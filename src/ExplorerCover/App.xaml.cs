@@ -1,6 +1,6 @@
 using System.Windows;
 
-namespace ExplorerAlt;
+namespace ExplorerCover;
 
 public partial class App : Application
 {
