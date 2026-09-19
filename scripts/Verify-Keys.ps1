@@ -53,6 +53,7 @@ do {
 if (!$file) { throw '検証用ファイルが見つかりません。' }
 $file.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
 $file.SetFocus()
+Start-Sleep -Milliseconds 250
 [TestInput]::Chord(0x11,0x43)
 Start-Sleep -Milliseconds 300
 [TestInput]::Chord(0x75)

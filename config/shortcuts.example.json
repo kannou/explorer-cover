@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "bindings": {
+    "focusAddress": ["Ctrl+K"],
+    "switchPane": ["F8"],
+    "navigateAddress": ["Enter"],
+    "focusFiles": ["Escape"]
+  }
+}

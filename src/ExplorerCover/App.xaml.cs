@@ -1,4 +1,5 @@
 using System.Windows;
+using ExplorerCover.Commands;
 
 namespace ExplorerCover;
 
@@ -9,7 +10,8 @@ public partial class App : Application
         base.OnStartup(e);
         DiagnosticLog.Write("Startup");
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var window = new MainWindow(e.Args.ElementAtOrDefault(0) ?? home, e.Args.ElementAtOrDefault(1) ?? home);
+        var settings = ShortcutSettings.Load();
+        var window = new MainWindow(e.Args.ElementAtOrDefault(0) ?? home, e.Args.ElementAtOrDefault(1) ?? home, settings.Service, settings.Warning);
         MainWindow = window;
         window.Show();
         DiagnosticLog.Write("Window shown");

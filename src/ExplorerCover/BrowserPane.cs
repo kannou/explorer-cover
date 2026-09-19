@@ -3,6 +3,9 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Data;
+using ExplorerCover.Core;
+using ExplorerCover.Commands;
 using ExplorerCover.Shell;
 
 namespace ExplorerCover;
@@ -10,43 +13,50 @@ namespace ExplorerCover;
 public sealed class BrowserPane : Grid, IDisposable
 {
     public ExplorerHost Browser { get; }
+    public PaneState State { get; }
+    private readonly TabState tab;
     public TextBox Address { get; } = new() { MinWidth = 80 };
     private readonly TextBlock status = new() { Text = "読み込み中…", TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(8, 5, 8, 5) };
     private readonly Border header;
     public event Action? Activated;
 
-    public BrowserPane(string label, string path)
+    public BrowserPane(string label, PaneState state, CommandDispatcher commands)
     {
+        State = state;
+        tab = state.SelectedTab;
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RowDefinitions.Add(new RowDefinition());
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var bar = new DockPanel { Margin = new Thickness(7) };
         bar.Children.Add(new TextBlock { Text = label, Width = 32, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.Bold });
-        var go = new Button { Content = "移動" };
+        var go = new Button { Content = "移動", Command = new PaneCommand(commands, CommandIds.NavigateAddress, state) };
         DockPanel.SetDock(go, Dock.Right);
-        go.Click += (_, _) => Navigate();
         bar.Children.Add(go);
         bar.Children.Add(Address);
-        Address.Text = path;
+        Address.SetBinding(TextBox.TextProperty, new Binding(nameof(TabState.AddressText)) { Source = tab, Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
         header = new Border { Child = bar, Background = Brushes.WhiteSmoke };
         Children.Add(header);
-        Browser = new ExplorerHost(path);
+        Browser = new ExplorerHost(tab.InitialPath);
         SetRow(Browser, 1);
         Children.Add(Browser);
         SetRow(status, 2);
         Children.Add(status);
-        Browser.Navigated += current => { Address.Text = current; status.Text = current; status.Foreground = Brushes.DimGray; };
-        Browser.Error += message => { status.Text = message; status.ToolTip = message; status.Foreground = Brushes.Firebrick; };
-        Browser.Activated += () => Activated?.Invoke();
+        Browser.Navigated += current => tab.NavigationSucceeded(current);
+        Browser.Error += tab.NavigationFailed;
+        Browser.Activated += () => { if (Browser.ContainsNativeFocus) Activated?.Invoke(); };
         Address.GotKeyboardFocus += (_, _) => Activated?.Invoke();
-        Address.PreviewKeyDown += (_, e) =>
-        {
-            if (e.Key == Key.Enter) { Navigate(); e.Handled = true; }
-            if (e.Key == Key.Escape) { Address.Text = Browser.CurrentPath; Browser.FocusView(); e.Handled = true; }
-        };
+        tab.PropertyChanged += TabChanged;
     }
 
-    private void Navigate() { if (Browser.Navigate(Address.Text)) Browser.FocusView(); }
+    private void TabChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        status.Text = tab.Error ?? tab.CurrentPath ?? "読み込み中…";
+        status.ToolTip = status.Text;
+        status.Foreground = tab.Error == null ? Brushes.DimGray : Brushes.Firebrick;
+        CommandManager.InvalidateRequerySuggested();
+    }
+    public void NavigateAddress() { if (Browser.Navigate(tab.AddressText)) Browser.FocusView(); }
+    public void FocusFiles() { tab.CancelAddressEdit(); Browser.FocusView(); }
     public void FocusAddress()
     {
         // ネイティブ一覧への移動をWPFが認識していない場合にも、
@@ -57,5 +67,5 @@ public sealed class BrowserPane : Grid, IDisposable
         Address.SelectAll();
     }
     public void SetActive(bool active) => header.Background = active ? new SolidColorBrush(Color.FromRgb(223, 237, 252)) : Brushes.WhiteSmoke;
-    public void Dispose() => Browser.Dispose();
+    public void Dispose() { tab.PropertyChanged -= TabChanged; Browser.Dispose(); }
 }
