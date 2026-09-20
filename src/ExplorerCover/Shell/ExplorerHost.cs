@@ -151,6 +151,39 @@ public sealed class ExplorerHost : HwndHost
         finally { Marshal.ReleaseComObject(view); }
     }
 
+    // 現在の選択から取得する。表示名の連結やクリップボードは使用しない。
+    public string? GetSingleSelectedFile()
+    {
+        if (IsNavigating) return null;
+        var view = GetView();
+        IShellItemArray? items = null; IShellItem? item = null; nint name = 0;
+        try
+        {
+            if (view is not IFolderView folder) return null;
+            folder.ItemCount(1, out var selected); // SVGIO_SELECTION
+            if (selected != 1) return null;
+            var iid = typeof(IShellItemArray).GUID;
+            folder.Items(1, ref iid, out items);
+            items.GetCount(out var count);
+            if (count != 1) return null;
+            items.GetItemAt(0, out item);
+            item.GetAttributes(0x60400000, out var attributes); // FILESYSTEM | FOLDER | STREAM
+            if ((attributes & 0x40000000) == 0) return null;
+            // ZIP等はFOLDERとSTREAMの両方を持つが、実体はプレビュー対象のファイル。
+            if ((attributes & 0x20400000) == 0x20000000) return null;
+            item.GetDisplayName(0x80058000, out name); // SIGDN_FILESYSPATH
+            return Marshal.PtrToStringUni(name);
+        }
+        catch (COMException ex) { DiagnosticLog.Write($"QuickLook selection unavailable: {ex.Message}"); return null; }
+        finally
+        {
+            if (name != 0) Marshal.FreeCoTaskMem(name);
+            if (item != null) Marshal.ReleaseComObject(item);
+            if (items != null) Marshal.ReleaseComObject(items);
+            if (view != null) Marshal.ReleaseComObject(view);
+        }
+    }
+
     public bool TranslateShellKey(ref MSG msg)
     {
         // ExplorerBrowser全体に転送し、名前変更等の内部編集状態も尊重する。

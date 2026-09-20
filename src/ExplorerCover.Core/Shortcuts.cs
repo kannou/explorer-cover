@@ -65,7 +65,7 @@ public sealed class ShortcutMap
             foreach (var text in gestures)
             {
                 var gesture = ShortcutGesture.Parse(text);
-                ValidateGesture(gesture, command.Scopes);
+                ValidateGesture(gesture, command);
                 if (bindings.Any(b => b.Gesture == gesture && (b.Scopes & command.Scopes) != 0))
                     throw new FormatException($"キーが競合しています: {gesture}");
                 bindings.Add(new(command.Id, gesture, command.Scopes));
@@ -74,8 +74,9 @@ public sealed class ShortcutMap
         Bindings = bindings.AsReadOnly();
     }
 
-    private static void ValidateGesture(ShortcutGesture gesture, InputScope scopes)
+    private static void ValidateGesture(ShortcutGesture gesture, CommandDefinition command)
     {
+        var scopes = command.Scopes;
         // 編集キーとOS／シェルの既存操作は、この段階では変更対象にしない。
         var key = gesture.VirtualKey;
         var mods = gesture.Modifiers;
@@ -84,7 +85,10 @@ public sealed class ShortcutMap
         if (key is 0x0D or 0x1B && mods != KeyModifiers.None)
             throw new FormatException("EnterとEscapeの修飾キー付き割り当ては未対応です。");
         if (key == 0x20)
-            throw new FormatException("Spaceは文字入力・IMEと競合するため、この段階では割り当てられません。");
+        {
+            if (command.Id == CommandIds.QuickView && mods == KeyModifiers.None) return;
+            throw new FormatException("Spaceは修飾キーなしでQuickLookにのみ割り当てられます。");
+        }
         var tabSwitch = key == 0x09 && mods is KeyModifiers.Control or (KeyModifiers.Control | KeyModifiers.Shift);
         var navigation = key is 0x25 or 0x26 or 0x27 && mods == KeyModifiers.Alt;
         if (!tabSwitch && !navigation && (key == 0x09 || key is 0x08 or 0x2D or 0x2E || key is >= 0x21 and <= 0x28))

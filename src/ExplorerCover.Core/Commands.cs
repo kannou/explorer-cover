@@ -5,6 +5,7 @@ public enum InputScope { None = 0, Browser = 1, Address = 2, Chrome = 4 }
 
 public static class CommandIds
 {
+    public const string QuickView = "quickView";
     public const string FocusAddress = "focusAddress";
     public const string FocusFiles = "focusFiles";
     public const string SwitchPane = "switchPane";
@@ -25,6 +26,7 @@ public static class CommandCatalog
 {
     public static IReadOnlyList<CommandDefinition> All { get; } = Array.AsReadOnly(new[]
     {
+        new CommandDefinition(CommandIds.QuickView, "QuickLookでプレビュー", InputScope.Browser, "Space"),
         new CommandDefinition(CommandIds.FocusAddress, "パス入力へ移動", InputScope.Browser | InputScope.Address | InputScope.Chrome, "Ctrl+L"),
         new CommandDefinition(CommandIds.FocusFiles, "パス編集を取り消して一覧へ戻る", InputScope.Address, "Escape"),
         new CommandDefinition(CommandIds.SwitchPane, "左右のペインを切り替え", InputScope.Browser | InputScope.Address | InputScope.Chrome, "F6"),

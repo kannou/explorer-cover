@@ -1,6 +1,7 @@
 ﻿param([int]$ProcessId = [int](Get-Content (Join-Path $PSScriptRoot '..\artifacts\app.pid')))
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type @'
 using System; using System.Runtime.InteropServices;

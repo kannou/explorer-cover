@@ -193,5 +193,27 @@ Check("マウス設定の誤記・重複・競合する左ボタンを拒否す�
         "{\"version\":1,\"closeTabButton\":\"right\",\"closeTabButton\":\"middle\"}" })
         Throws<FormatException>(() => MouseSettings.FromJson(json));
 });
+Check("QuickLookは一覧だけで有効、変更・解除とSpace予約を維持", () =>
+{
+    var map = new ShortcutMap();
+    Equal(CommandIds.QuickView, map.Resolve(Key("Space"), InputScope.Browser));
+    Equal<string?>(null, map.Resolve(Key("Space"), InputScope.Address));
+    Equal<string?>(null, map.Resolve(Key("Space"), InputScope.Chrome));
+    var changed = ShortcutMap.FromJson(Json("{\"quickView\":[\"F8\"]}"));
+    Equal<string?>(null, changed.Resolve(Key("Space"), InputScope.Browser));
+    Equal(CommandIds.QuickView, changed.Resolve(Key("F8"), InputScope.Browser));
+    Equal<string?>(null, ShortcutMap.FromJson(Json("{\"quickView\":[]}")).Resolve(Key("Space"), InputScope.Browser));
+    Throws<FormatException>(() => ShortcutMap.FromJson(Json("{\"quickView\":[\"Ctrl+Space\"]}")));
+    Throws<FormatException>(() => ShortcutMap.FromJson(Json("{\"newTab\":[\"Space\"]}")));
+});
+Check("QuickLook起動先の自動検出・手動設定と不正設定", () =>
+{
+    Equal<string?>(null, QuickLookSettings.FromJson("{\"version\":1}").ExecutablePath);
+    Equal<string?>(null, QuickLookSettings.FromJson("{\"version\":1,\"executablePath\":null}").ExecutablePath);
+    Equal(@"C:\日本語 path\QuickLook.exe", QuickLookSettings.FromJson("{\"version\":1,\"executablePath\":\"C:\\\\日本語 path\\\\QuickLook.exe\"}").ExecutablePath);
+    foreach (var json in new[] { "[]", "{}", "{\"version\":\"1\"}", "{\"version\":2}", "{\"version\":1,\"oops\":1}", "{\"version\":1,\"executablePath\":5}",
+        "{\"version\":1,\"executablePath\":\"relative.exe\"}", "{\"version\":1,\"executablePath\":null,\"executablePath\":null}" })
+        Throws<FormatException>(() => QuickLookSettings.FromJson(json));
+});
 Console.WriteLine($"{count - failures.Count}/{count} passed");
 return failures.Count == 0 ? 0 : 1;

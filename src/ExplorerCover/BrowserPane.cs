@@ -31,6 +31,8 @@ public sealed class BrowserPane : Grid, IDisposable
     public TextBox Address { get; } = new() { MinWidth = 40 };
     private readonly TextBlock status = new() { Text = "読み込み中…", TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(8, 5, 8, 5) };
     private readonly Border header;
+    private string? operationMessage;
+    public void ShowOperationMessage(string? message) { operationMessage = message; UpdateStatus(); }
     public event Action? Activated;
 
     public BrowserPane(string label, PaneState state, CommandDispatcher commands, MouseSettings mouseSettings)
@@ -109,6 +111,7 @@ public sealed class BrowserPane : Grid, IDisposable
 
     private void SelectView()
     {
+        operationMessage = null;
         focusAfterNavigation = null;
         if (views.Any(v => v.Key != State.SelectedTab && v.Value.Host.ContainsNativeFocus)) FocusAddress();
         foreach (var (tab, view) in views)
@@ -135,15 +138,16 @@ public sealed class BrowserPane : Grid, IDisposable
     private void TabChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (sender is not TabState tab) return;
+        if (tab == State.SelectedTab) operationMessage = null;
         if (e.PropertyName == nameof(TabState.CurrentPath)) UpdateTabHeader(tab);
         if (tab == State.SelectedTab) UpdateStatus();
     }
     private void UpdateStatus()
     {
         var tab = State.SelectedTab;
-        status.Text = tab.Error ?? tab.CurrentPath ?? "読み込み中…";
+        status.Text = operationMessage ?? tab.Error ?? tab.CurrentPath ?? "読み込み中…";
         status.ToolTip = status.Text;
-        status.Foreground = tab.Error == null ? Brushes.DimGray : Brushes.Firebrick;
+        status.Foreground = tab.Error == null && operationMessage == null ? Brushes.DimGray : Brushes.Firebrick;
         CommandManager.InvalidateRequerySuggested();
     }
 

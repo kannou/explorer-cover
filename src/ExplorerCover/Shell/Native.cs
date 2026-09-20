@@ -80,8 +80,50 @@ public interface ICommDlgBrowser
     [PreserveSig] int IncludeObject(nint view, nint pidl);
 }
 
+[ComImport, Guid("cde725b0-ccc9-4519-917e-325d72fab4ce"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IFolderView
+{
+    void GetCurrentViewMode(out uint mode);
+    void SetCurrentViewMode(uint mode);
+    void GetFolder(ref Guid iid, out nint folder);
+    void Item(int index, out nint pidl);
+    void ItemCount(uint flags, out int count);
+    void Items(uint flags, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IShellItemArray items);
+}
+
+[ComImport, Guid("b63ea76d-1f85-456f-a19c-48159efa858b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IShellItemArray
+{
+    void BindToHandler(nint context, ref Guid handler, ref Guid iid, out nint result);
+    void GetPropertyStore(int flags, ref Guid iid, out nint result);
+    void GetPropertyDescriptionList(nint key, ref Guid iid, out nint result);
+    void GetAttributes(uint flags, uint mask, out uint attributes);
+    void GetCount(out uint count);
+    void GetItemAt(uint index, out IShellItem item);
+}
+
+[ComImport, Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IShellItem
+{
+    void BindToHandler(nint context, ref Guid handler, ref Guid iid, out nint result);
+    void GetParent(out IShellItem parent);
+    void GetDisplayName(uint type, out nint name);
+    void GetAttributes(uint mask, out uint attributes);
+}
+
 internal static class Native
 {
+    [DllImport("user32.dll")] internal static extern short GetAsyncKeyState(int key);
+    [DllImport("imm32.dll")] internal static extern nint ImmGetContext(nint hwnd);
+    [DllImport("imm32.dll")] internal static extern bool ImmReleaseContext(nint hwnd, nint context);
+    [DllImport("imm32.dll", CharSet = CharSet.Unicode)] internal static extern int ImmGetCompositionStringW(nint context, uint index, nint buffer, uint length);
+    internal static bool IsComposingText()
+    {
+        var hwnd = GetFocus(); var context = ImmGetContext(hwnd);
+        if (context == 0) return false;
+        try { return ImmGetCompositionStringW(context, 8, 0, 0) > 0; }
+        finally { ImmReleaseContext(hwnd, context); }
+    }
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     internal static extern nint CreateWindowEx(uint exStyle, string className, string title, uint style, int x, int y, int width, int height, nint parent, nint menu, nint instance, nint param);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)]

@@ -6,6 +6,10 @@ C#＋WPFで外枠を作り、Windows Shellの`IExplorerBrowser`を左右に埋�
 
 段階5b-2のタブのマウス操作も実装・検証済みです。並べ替え、空白の左ダブルクリックによる追加、設定したボタンでの終了を試用できます。[検証記録](docs/TAB-MOUSE.md)を参照してください。
 
+段階5cのQuickLook連携を追加しました。一覧でファイルを1つ選び、Spaceを押して離すとプレビューします。[設定・検証記録](docs/QUICKLOOK.md)を参照してください。
+
+プレビューを開いた後は、一覧の選択を変えると表示内容も自動で切り替わります。閉じた後は選択変更だけで開き直しません。
+
 ## 起動
 
 この作業環境では、プロジェクト内の`.tools/dotnet`に.NET SDK 10.0.401を配置済みです。システムのPATH変更は不要です。
@@ -41,6 +45,7 @@ PowerShellから左右の場所を指定する場合:
 | 空白部分から新規タブ | タブバーの空白を左ダブルクリック |
 | 戻る／進む | ←／→、Alt+Left／Alt+Right |
 | ひとつ上へ | ↑／Alt+Up。ドライブのルートでは無効 |
+| QuickLookでプレビュー | 一覧で単一ファイルを選択してSpace。もう一度押すと閉じる |
 | コピー／切り取り／貼り付け | Ctrl+C／Ctrl+X／Ctrl+V |
 | 名前変更 | F2。編集中のCtrl+Aで拡張子を含めて全選択 |
 | ごみ箱へ移動 | Delete。確認の有無はWindows側の設定に従う |
@@ -55,7 +60,7 @@ PowerShellから左右の場所を指定する場合:
 2. Explorerとのドラッグ＆ドロップ、普段利用している右クリック項目を試します。
 3. パス欄に普段の場所を入力して、フォーカスやキー操作の使い勝手を確認します。
 4. [試用メモ](docs/TRIAL.md)に気付いた点を記録します。
-5. タブを複製して別の場所へ移動し、切替・戻る・進むを試します。マウスでの並べ替え・終了・空白からの追加も試し、[開発計画](PLAN.md)を見直してからQuickLook連携へ進みます。
+5. タブの切替・移動・マウス操作と、ファイル選択後のSpaceによるQuickLookの開閉を試します。[開発計画](PLAN.md)を見直し、次は左サイドビュー（6a）へ進みます。
 
 このPCではAutoHotkeyが左Ctrl+Tabをウィンドウ切替に割り当てています。アプリの初期キーを試す場合は右Ctrlを使うか、下記のJSONで`nextTab`／`previousTab`をF8／F7などに変更してください。常駐ツールの設定は変更していません。
 
@@ -104,10 +109,23 @@ Remove-Item Env:\EXPLORER_COVER_SHORTCUTS
 | `back` | 戻る | Alt+Left | 一覧・パス欄・外枠 |
 | `forward` | 進む | Alt+Right | 一覧・パス欄・外枠 |
 | `parent` | ひとつ上へ | Alt+Up | 一覧・パス欄・外枠 |
+| `quickView` | QuickLookでプレビュー | Space | 一覧（文字編集中を除く） |
 
 同じ入力範囲での重複、誤ったコマンド名、未対応のキーやバージョンは拒否します。不正な設定は一部だけ適用せず、初期値で起動して画面下部に警告を表示します。通常のキー案内も実際の設定に追従します。
 
-この段階ではCtrl+C／X／Vなどのシェル操作、F2・F5・F10、編集キー、Space、Ctrl+Alt、Winキーを含む割り当ては変更対象外です。Tab・カーソルキーはCtrl+Tab／Ctrl+Shift+Tab、Alt+Left／Right／Upのみ割り当て可能です。一覧からパス欄へのTab／Shift+Tabは固定のフォーカス移動として残ります。名前変更欄とIME変換中はアプリのコマンドで入力を奪いません。QuickLook用のSpaceは段階5cで追加します。
+この段階ではCtrl+C／X／Vなどのシェル操作、F2・F5・F10、編集キー、Ctrl+Alt、Winキーを含む割り当ては変更対象外です。Spaceは修飾キーなしで`quickView`にのみ使用できます。Tab・カーソルキーはCtrl+Tab／Ctrl+Shift+Tab、Alt+Left／Right／Upのみ割り当て可能です。一覧からパス欄へのTab／Shift+Tabは固定のフォーカス移動として残ります。名前変更欄とIME変換中はアプリのコマンドで入力を奪いません。
+
+## QuickLookの設定
+
+起動済みのQuickLookには設定なしで接続します。未起動の場合はStore版、または標準的なインストール先のQuickLookを検出して起動します。検出できない場合は`%LOCALAPPDATA%\explorer_cover\quicklook.json`でQuickLook.exeの絶対パスを指定できます。
+
+```json
+{ "version": 1, "executablePath": "C:\\Tools\\QuickLook\\QuickLook.exe" }
+```
+
+`executablePath`を省略、または`null`にすると自動検出です。環境変数`EXPLORER_COVER_QUICKLOOK`で設定ファイルを指定することもできます。設定変更は再起動時に反映します。プレビューキーの変更・解除には上記の`shortcuts.json`の`quickView`を使います。
+
+未選択・複数選択・フォルダーは対象外です。パス入力と名前変更中のSpaceは文字入力として扱います。プレビュー中も一覧にフォーカスがある場合は同じキーで閉じられます。QuickLookウィンドウを操作している場合はQuickLook側のSpace／Escapeで閉じます。
 
 ## タブを閉じるマウスボタンの設定
 
@@ -144,6 +162,7 @@ Remove-Item Env:\EXPLORER_COVER_MOUSE
 $env:DOTNET_CLI_HOME = "$PWD\.tools\cli"
 .\.tools\dotnet\dotnet.exe build .\src\ExplorerCover\ExplorerCover.csproj -c Release
 .\.tools\dotnet\dotnet.exe run --project .\tests\ExplorerCover.Core.Tests -c Release
+.\.tools\dotnet\dotnet.exe run --project .\tests\ExplorerCover.QuickLook.Tests -c Release
 ```
 
 検証結果は[検証記録](docs/VERIFICATION.md)に記載しています。`scripts/Verify-*.ps1`はWindowsのUI Automationを使う開発用スクリプトです。デスクトップ上の試作用ウィンドウと検証用フォルダーを操作するため、通常の操作と同時に実行しないでください。試用はこれらを実行せず`trial.cmd`だけで始められます。
