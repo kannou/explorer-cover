@@ -19,7 +19,7 @@ public sealed class MainWindow : Window
     private readonly TextBlock help;
     public WorkspaceState State { get; }
 
-    public MainWindow(string leftPath, string rightPath, ShortcutService shortcuts, string? settingsWarning = null)
+    public MainWindow(string leftPath, string rightPath, ShortcutService shortcuts, string? settingsWarning = null, MouseSettings? mouseSettings = null)
     {
         State = new(leftPath, rightPath);
         this.shortcuts = shortcuts;
@@ -38,7 +38,7 @@ public sealed class MainWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(State.LeftPaneRatio, GridUnitType.Star), MinWidth = 250 });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(7) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - State.LeftPaneRatio, GridUnitType.Star), MinWidth = 250 });
-        left = new BrowserPane("左", State.Left, commands); right = new BrowserPane("右", State.Right, commands);
+        left = new BrowserPane("左", State.Left, commands, mouseSettings ?? new()); right = new BrowserPane("右", State.Right, commands, mouseSettings ?? new());
         grid.Children.Add(left);
         var splitter = new GridSplitter { Width = 7, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch, Background = Brushes.LightGray, ResizeDirection = GridResizeDirection.Columns, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
         splitter.DragCompleted += (_, _) =>

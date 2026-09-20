@@ -128,6 +128,13 @@ public sealed class PaneState : ObservableState
         tabs.Remove(tab);
         return true;
     }
+    public void MoveTab(TabState tab, int newIndex)
+    {
+        var oldIndex = tabs.IndexOf(tab);
+        if (oldIndex < 0) throw new ArgumentException("このペインのタブではありません。", nameof(tab));
+        if (newIndex < 0 || newIndex >= tabs.Count) throw new ArgumentOutOfRangeException(nameof(newIndex));
+        if (oldIndex != newIndex) tabs.Move(oldIndex, newIndex);
+    }
 }
 
 public sealed class WorkspaceState : ObservableState

@@ -163,5 +163,35 @@ Check("タブと履歴のキーを変更でき編集キーは保護する", () =
     foreach (var gesture in new[] { "Alt+Tab", "Shift+Tab", "Left", "Ctrl+Left", "Shift+Left", "Delete", "Ctrl+Back" })
         Throws<FormatException>(() => new ShortcutMap(new Dictionary<string, string[]> { [CommandIds.Back] = [gesture] }));
 });
+Check("並べ替えは選択・タブID・編集中のパス・履歴を保持する", () =>
+{
+    var pane = new PaneState("A"); var a = pane.SelectedTab;
+    var b = pane.AddTab("B"); var c = pane.AddTab("C");
+    b.NavigationSucceeded("B"); b.NavigationSucceeded("B2"); b.AddressText = "editing";
+    pane.SelectTab(b); var id = b.Id;
+    pane.MoveTab(b, 0);
+    Equal(b, pane.Tabs[0]); Equal(b, pane.SelectedTab); Equal(id, b.Id);
+    Equal("editing", b.AddressText); Equal(2, b.History.Entries.Count);
+    pane.MoveTab(b, 2); Equal(b, pane.Tabs[2]);
+    pane.MoveTab(b, 2); Equal(3, pane.Tabs.Count);
+    Throws<ArgumentException>(() => pane.MoveTab(new TabState("foreign"), 0));
+    Throws<ArgumentOutOfRangeException>(() => pane.MoveTab(b, 3));
+    Equal(true, pane.CloseTab(a)); Equal(b, pane.SelectedTab);
+    Equal(true, pane.CloseTab(b)); Equal(c, pane.SelectedTab);
+    Equal(false, pane.CloseTab(c));
+});
+Check("マウス設定の変更・無効化と省略時の初期値", () =>
+{
+    Equal(TabCloseButton.Middle, MouseSettings.FromJson("{\"version\":1}").CloseTabButton);
+    foreach (var pair in new[] { ("none", TabCloseButton.None), ("middle", TabCloseButton.Middle), ("right", TabCloseButton.Right), ("xButton1", TabCloseButton.XButton1), ("xButton2", TabCloseButton.XButton2) })
+        Equal(pair.Item2, MouseSettings.FromJson("{\"version\":1,\"closeTabButton\":\"" + pair.Item1 + "\"}").CloseTabButton);
+});
+Check("マウス設定の誤記・重複・競合する左ボタンを拒否する", () =>
+{
+    foreach (var json in new[] { "[]", "{}", "{\"version\":\"1\"}", "{\"version\":2}", "{\"version\":1,\"unknown\":0}",
+        "{\"version\":1,\"closeTabButton\":\"left\"}", "{\"version\":1,\"closeTabButton\":null}",
+        "{\"version\":1,\"closeTabButton\":\"right\",\"closeTabButton\":\"middle\"}" })
+        Throws<FormatException>(() => MouseSettings.FromJson(json));
+});
 Console.WriteLine($"{count - failures.Count}/{count} passed");
 return failures.Count == 0 ? 0 : 1;

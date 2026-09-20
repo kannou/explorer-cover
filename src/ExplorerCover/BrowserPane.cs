@@ -18,7 +18,7 @@ public sealed class BrowserPane : Grid, IDisposable
     private sealed record TabView(ExplorerHost Host, TabNavigation Navigation, RadioButton Header);
     private readonly Dictionary<TabState, TabView> views = [];
     private readonly Grid browsers = new();
-    private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal };
+    private readonly TabStrip tabs;
     private readonly CommandDispatcher commands;
     private readonly string label;
     private TabState? focusAfterNavigation;
@@ -33,10 +33,11 @@ public sealed class BrowserPane : Grid, IDisposable
     private readonly Border header;
     public event Action? Activated;
 
-    public BrowserPane(string label, PaneState state, CommandDispatcher commands)
+    public BrowserPane(string label, PaneState state, CommandDispatcher commands, MouseSettings mouseSettings)
     {
         State = state; this.commands = commands; this.label = label;
         initialPath = state.SelectedTab.InitialPath;
+        tabs = new TabStrip(state, mouseSettings, CloseTab, () => commands.Execute(CommandIds.NewTab, state), label);
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RowDefinitions.Add(new RowDefinition());
@@ -47,7 +48,7 @@ public sealed class BrowserPane : Grid, IDisposable
         actions.Children.Add(Button("複製", "タブを複製", CommandIds.DuplicateTab));
         actions.Children.Add(Button("×", "タブを閉じる", CommandIds.CloseTab));
         DockPanel.SetDock(actions, Dock.Right); tabBar.Children.Add(actions);
-        tabBar.Children.Add(new ScrollViewer { Content = tabs, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        tabBar.Children.Add(tabs);
         Children.Add(tabBar);
         var bar = new DockPanel { Margin = new Thickness(7) };
         bar.Children.Add(new TextBlock { Text = label, Width = 24, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.Bold });
@@ -83,12 +84,12 @@ public sealed class BrowserPane : Grid, IDisposable
     {
         var host = new ExplorerHost(tab.InitialPath) { Visibility = Visibility.Hidden };
         var navigation = new TabNavigation(tab);
-        var tabHeader = new RadioButton { GroupName = State.Id.ToString(), Padding = new Thickness(5), Margin = new Thickness(0, 0, 8, 0), MinWidth = 60, MaxWidth = 180, VerticalAlignment = VerticalAlignment.Center };
+        var tabHeader = new RadioButton { GroupName = State.Id.ToString(), Padding = new Thickness(5), Margin = new Thickness(0), MinWidth = 60, MaxWidth = 180, VerticalAlignment = VerticalAlignment.Center };
         tabHeader.SetResourceReference(StyleProperty, "TabHeader");
         tabHeader.Checked += (_, _) => { if (!disposed) { State.SelectTab(tab); Activated?.Invoke(); } };
         AutomationProperties.SetAutomationId(tabHeader, label + ".tab." + tab.Id);
         views.Add(tab, new(host, navigation, tabHeader));
-        tabs.Children.Add(tabHeader); browsers.Children.Add(host);
+        tabs.Add(tab, tabHeader); browsers.Children.Add(host);
         host.Navigated += path =>
         {
             if (disposed || !views.ContainsKey(tab)) return;
@@ -116,7 +117,7 @@ public sealed class BrowserPane : Grid, IDisposable
             view.Header.IsChecked = tab == State.SelectedTab;
         }
         Address.SetBinding(TextBox.TextProperty, new Binding(nameof(TabState.AddressText)) { Source = State.SelectedTab, Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
-        views[State.SelectedTab].Header.BringIntoView();
+        tabs.Reveal(State.SelectedTab);
         UpdateStatus();
     }
 
@@ -154,14 +155,16 @@ public sealed class BrowserPane : Grid, IDisposable
         focusAfterNavigation = tab;
         FocusAddress();
     }
-    public void CloseTab()
+    public void CloseTab() => CloseTab(State.SelectedTab);
+    private void CloseTab(TabState tab)
     {
-        var tab = State.SelectedTab;
+        var selected = tab == State.SelectedTab;
         if (!State.CloseTab(tab)) return;
         var view = views[tab]; views.Remove(tab);
         tab.PropertyChanged -= TabChanged;
-        tabs.Children.Remove(view.Header); view.Host.Dispose(); browsers.Children.Remove(view.Host);
-        FocusFiles(); UpdateStatus();
+        tabs.Remove(tab); view.Host.Dispose(); browsers.Children.Remove(view.Host);
+        if (selected) FocusFiles();
+        UpdateStatus();
     }
     public void CycleTab(int offset)
     {
@@ -210,6 +213,7 @@ public sealed class BrowserPane : Grid, IDisposable
     public void Dispose()
     {
         disposed = true;
+        tabs.Dispose();
         State.PropertyChanged -= PaneChanged;
         foreach (var (tab, view) in views) { tab.PropertyChanged -= TabChanged; view.Host.Dispose(); }
         views.Clear();

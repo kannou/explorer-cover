@@ -11,7 +11,9 @@ public partial class App : Application
         DiagnosticLog.Write("Startup");
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var settings = ShortcutSettings.Load();
-        var window = new MainWindow(e.Args.ElementAtOrDefault(0) ?? home, e.Args.ElementAtOrDefault(1) ?? home, settings.Service, settings.Warning);
+        var mouse = MouseSettingsFile.Load();
+        var warning = string.Join("\n", new[] { settings.Warning, mouse.Warning }.Where(value => value != null));
+        var window = new MainWindow(e.Args.ElementAtOrDefault(0) ?? home, e.Args.ElementAtOrDefault(1) ?? home, settings.Service, warning.Length == 0 ? null : warning, mouse.Settings);
         MainWindow = window;
         window.Show();
         DiagnosticLog.Write("Window shown");
