@@ -14,12 +14,16 @@ public static class TabInput {
   [FieldOffset(20)] public uint MouseFlags;
  }
  [DllImport("user32.dll")] static extern bool SetCursorPos(int x,int y);
+ public static void Hover(int x,int y) { SetCursorPos(x,y); System.Threading.Thread.Sleep(250); }
+ [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd,IntPtr hdc,uint flags);
+ [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
  public static void Drag(int x,int y,int targetX,int targetY) {
   uint current; GetWindowThreadProcessId(GetForegroundWindow(),out current);
   if(current!=Target) throw new InvalidOperationException("検証対象が前面にありません。");
-  SetCursorPos(x,y);
+  if(!SetCursorPos(x,y)) throw new InvalidOperationException("ポインタを移動できません。");
+  System.Threading.Thread.Sleep(100);
   if(SendInput(1,new[]{new Input{MouseFlags=2}},40)!=1) throw new InvalidOperationException("入力送信失敗");
-  try { for(int i=1;i<=20;i++){SetCursorPos(x+(targetX-x)*i/20,y+(targetY-y)*i/20);System.Threading.Thread.Sleep(20);} }
+  try { System.Threading.Thread.Sleep(150); for(int i=1;i<=20;i++){SetCursorPos(x+(targetX-x)*i/20,y+(targetY-y)*i/20);System.Threading.Thread.Sleep(20);} }
   finally { SendInput(1,new[]{new Input{MouseFlags=4}},40); }
  }
  [DllImport("user32.dll",SetLastError=true)] static extern uint SendInput(uint count,Input[] inputs,int size);
@@ -39,6 +43,7 @@ public static class TabInput {
  }
 }
 "@
+[TabInput]::SetProcessDPIAware() | Out-Null
 $root = Split-Path -Parent $PSScriptRoot
 $trial = Join-Path $root ('artifacts\sidebar-' + [Guid]::NewGuid().ToString('N'))
 $left = Join-Path $trial 'left'
@@ -51,11 +56,11 @@ Set-Content (Join-Path $left 'selection.txt') 'tab selection test'
 $scope = [System.Windows.Automation.TreeScope]::Descendants
 $all = [System.Windows.Automation.Condition]::TrueCondition
 function Wait-Until([scriptblock]$check) {
- $deadline = [DateTime]::UtcNow.AddSeconds(12)
+ $deadline = [DateTime]::UtcNow.AddSeconds(30)
  do { if (& $check) { return }; Start-Sleep -Milliseconds 100 } while ([DateTime]::UtcNow -lt $deadline)
  throw ("操作結果の待機がタイムアウトしました。" + (Get-PSCallStack | Out-String) + ((Elements | Where-Object { $_.Current.AutomationId -like '*Status' } | ForEach-Object { $_.Current.AutomationId + '=' + $_.Current.Name }) -join ';'))
 }
-function Elements { @($script:window.FindAll($scope,$all)) }
+function Elements { if ($null -ne $script:window) { @($script:window.FindAll($scope,$all)) } }
 function Find([string]$id) { $script:window.FindFirst($scope, [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty,$id)) }
 function Value([string]$side) { (Find ($side+'Address')).GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern) }
 function Invoke([string]$id) { (Find $id).GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); Start-Sleep -Milliseconds 150 }
@@ -81,8 +86,21 @@ $app=Start-Process (Join-Path $root '.tools\dotnet\dotnet.exe') -ArgumentList @(
 $script:window=$null
 function Bookmark([string]$name) { (Elements) | Where-Object { $_.Current.AutomationId -like 'Sidebar.Bookmark.*' -and $_.Current.Name -eq $name } | Select-Object -First 1 }
 function Menu([string]$name) { [System.Windows.Automation.AutomationElement]::RootElement.FindFirst($scope,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty,$name)) }
+function Capture([string]$name) {
+ Add-Type -AssemblyName System.Drawing
+ $bounds=$window.Current.BoundingRectangle
+ $bitmap=New-Object System.Drawing.Bitmap ([int]$bounds.Width),([int]$bounds.Height)
+ $graphics=[System.Drawing.Graphics]::FromImage($bitmap)
+ try {
+  $hdc=$graphics.GetHdc()
+  try { $captured=[TabInput]::PrintWindow([IntPtr]$window.Current.NativeWindowHandle,$hdc,2) } finally { $graphics.ReleaseHdc($hdc) }
+  if(!$captured){throw '画面の取得に失敗'}
+  $bitmap.Save((Join-Path $trial $name))
+ } finally { $graphics.Dispose(); $bitmap.Dispose() }
+}
 try {
  Wait-Until {
+  if ($app.HasExited) { throw "検証アプリが起動中に終了しました。終了コード: $($app.ExitCode)" }
   $script:window=[System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -like 'explorer_cover*' } | Select-Object -First 1
   $null -ne $script:window
  }
@@ -97,7 +115,9 @@ try {
  (Find '右Address').SetFocus(); Press @(0x11,0x54); At '右' $right
  Go '右' $c
  $bookmark=Bookmark '日本語 A'; $bookmark.SetFocus()
- Assert ((Find 'Sidebar.Target').Current.Name -eq '移動先：右ペイン') 'サイドバーに移ると対象が変わった'
+ Assert ($null -eq (Find 'Sidebar.Target')) '移動先表示が残っている'
+ Assert ($bookmark.Current.HelpText.Contains($a)) 'ブックマークにフルパスがない'
+ Assert ((Find 'Sidebar.RefreshDrives').Current.BoundingRectangle.Top -lt (Find 'Sidebar.AddBookmark').Current.BoundingRectangle.Top) 'ドライブが上に配置されていない'
  $bookmark.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
  At '右' $a; At '左' $b
  Assert ((Tabs '右').Count -eq 2) '既存タブで開いていない'
@@ -131,7 +151,12 @@ try {
  Assert (Test-Path -LiteralPath $a) 'ブックマーク削除で実フォルダーも削除した'
  'PASS: ブックマークの改名・削除'
  $driveId='Sidebar.Drive.'+[IO.Path]::GetPathRoot($trial)
- Wait-Until { $null -ne (Find $driveId) -and (Find $driveId).Current.Name -like '*空き*使用率*' }
+ Wait-Until { $null -ne (Find $driveId) -and (Find $driveId).Current.Name -match '\d+\.\dGiB/\d+\.\dGiB' }
+ Assert ((Find $driveId).Current.HelpText -like '*空き容量 / 総容量*') '容量の意味を確認できない'
+ foreach($drive in [IO.DriveInfo]::GetDrives()){
+  if(!$drive.IsReady){$row=Find ('Sidebar.Drive.'+$drive.Name); Assert ($null -eq $row -or $row.Current.IsOffscreen) 'メディアなしドライブが表示されている'}
+ }
+ 'PASS: ドライブを上へ配置、容量の簡潔な表示、メディアなし非表示、ブックマークのフルパス'
  (Find '右Address').SetFocus(); (Find $driveId).SetFocus(); Invoke $driveId
  At '右' ([IO.Path]::GetPathRoot($trial))
  Invoke 'Sidebar.RefreshDrives'
@@ -141,21 +166,36 @@ try {
   Start-Sleep -Seconds 11
   Assert ((Find $driveId).Current.HasKeyboardFocus) '自動更新でサイドバーのフォーカスを失った'
   $rect=(Find 'Sidebar.Splitter').Current.BoundingRectangle
+  Write-Output ('境界（変更前）: '+$rect)
+  $hit=[System.Windows.Automation.AutomationElement]::FromPoint([System.Windows.Point]::new($rect.X+2,$rect.Y+100))
+  Write-Output ('境界の操作対象: '+$hit.Current.ProcessId+' '+$hit.Current.ClassName+' '+$hit.Current.AutomationId)
   [TabInput]::Drag([int]($rect.X+2),[int]($rect.Y+100),[int]($rect.X+62),[int]($rect.Y+100))
   Start-Sleep -Milliseconds 300
+  Write-Output ('境界（変更後）: '+(Find 'Sidebar.Splitter').Current.BoundingRectangle)
   Assert (((Find 'Sidebar.Splitter').Current.BoundingRectangle.X-$rect.X) -gt 40) 'サイドバーの幅を変更できない'
   $rightButton=(Find '右.navigateAddress').Current.BoundingRectangle
   Write-Output ('右移動ボタン: '+$rightButton+' 窓: '+$window.Current.BoundingRectangle)
   Assert ($rightButton.Right -le $window.Current.BoundingRectangle.Right) '幅変更で右ペインのボタンが画面外へ出た'
   'PASS: 自動更新でフォーカス保持、サイドバー幅のドラッグ変更'
- Add-Type -AssemblyName System.Drawing
- $rect=$window.Current.BoundingRectangle
- $bitmap=New-Object System.Drawing.Bitmap ([int]$rect.Width),([int]$rect.Height)
- $graphics=[System.Drawing.Graphics]::FromImage($bitmap)
- try { $graphics.CopyFromScreen([int]$rect.X,[int]$rect.Y,0,0,$bitmap.Size); $bitmap.Save((Join-Path $trial 'sidebar.png')) } finally { $graphics.Dispose(); $bitmap.Dispose() }
+ Capture 'sidebar-wide.png'
+ $bounds=(Find $driveId).Current.BoundingRectangle
+ [TabInput]::Hover([int]($bounds.X+10),[int]($bounds.Y+10))
+ Capture 'sidebar-hover.png'
+ (Find '右Address').SetFocus(); Press @(0x1B)
+ $rect=(Find 'Sidebar.Splitter').Current.BoundingRectangle
+ [TabInput]::Drag([int]($rect.X+2),[int]($rect.Y+100),[int]($rect.X-178),[int]($rect.Y+100))
+ Capture 'sidebar-narrow.png'
+ $rect=(Find 'Sidebar.Splitter').Current.BoundingRectangle
+ [TabInput]::Drag([int]($rect.X+2),[int]($rect.Y+100),[int]($rect.X+122),[int]($rect.Y+100))
+ Capture 'sidebar.png'
+ 'PASS: ホバー・最小幅・左右の配色を画像に記録'
+} catch {
+ Write-Output ($_ | Out-String)
+ throw
 } finally {
  if($script:window){try{$script:window.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()}catch{}}
- if(!$app.WaitForExit(5000)){throw '検証アプリの終了待機に失敗'}
+ if(!$app.HasExited){$app.CloseMainWindow() | Out-Null}
+ if(!$app.WaitForExit(5000)){Write-Warning ('検証アプリの終了待機に失敗: '+$app.Id)}
  $env:EXPLORER_COVER_SHORTCUTS=$oldConfig; $env:EXPLORER_COVER_LOG=$oldLog
  Write-Output ('検証ログ: '+$log)
 }

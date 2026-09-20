@@ -223,6 +223,7 @@ Check("ブックマークの登録・重複防止・改名・削除と幅の検�
     Equal(bookmark, sidebar.Add("別名", @"c:\work\"));
     Equal(1, sidebar.Bookmarks.Count);
     bookmark.Rename(" 資料 "); Equal("資料", bookmark.Name); Equal(@"C:\work", bookmark.Path);
+    Equal(@"資料 (C:\work)", bookmark.DisplayText);
     Throws<ArgumentException>(() => bookmark.Rename(" "));
     Equal(true, sidebar.Remove(bookmark)); Equal(false, sidebar.Remove(bookmark));
     Throws<ArgumentOutOfRangeException>(() => sidebar.Width = double.NaN);
@@ -266,6 +267,17 @@ Check("容量取得の失敗を他ドライブへ波及させない", () =>
     Equal(2, updates.Count);
     Equal("アクセスできません", updates.Single(d => d.Path == "denied").Error);
     Equal(75L, updates.Single(d => d.Path == "ready").FreeBytes);
+});
+Check("未接続ドライブも更新対象に残し、次の更新で利用可能へ変わる", () =>
+{
+    var calls = 0;
+    var updates = new List<DriveSnapshot>();
+    using var monitor = new DriveMonitor(() => Task.FromResult(new[] { "removable" }), path =>
+        Task.FromResult(++calls == 1 ? new DriveSnapshot(path, path, null, null, Availability: DriveAvailability.Unavailable) : new DriveSnapshot(path, "connected", 100, 80)));
+    monitor.Updated += updates.Add;
+    monitor.RefreshAsync().GetAwaiter().GetResult();
+    monitor.RefreshAsync().GetAwaiter().GetResult();
+    Equal(2, calls); Equal(DriveAvailability.Unavailable, updates[0].Availability); Equal(DriveAvailability.Ready, updates[1].Availability);
 });
 Console.WriteLine($"{count - failures.Count}/{count} passed");
 return failures.Count == 0 ? 0 : 1;

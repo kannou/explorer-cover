@@ -6,6 +6,7 @@ using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using ExplorerCover.Core;
+using ExplorerCover.Shell;
 
 namespace ExplorerCover;
 
@@ -15,55 +16,59 @@ public sealed class SidebarView : DockPanel, IDisposable
     private readonly Action<string> navigate;
     private readonly StackPanel bookmarks = new();
     private readonly StackPanel drives = new();
-    private readonly TextBlock target = new() { Margin = new Thickness(8), FontWeight = FontWeights.SemiBold };
-    private readonly TextBlock driveError = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.Firebrick };
-    private readonly Dictionary<string, (Button Button, TextBlock Name, TextBlock Capacity, ProgressBar Bar)> driveRows = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ShellIcons icons = new();
+    private bool disposed;
+    private readonly TextBlock driveError = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.Firebrick, Visibility = Visibility.Collapsed };
+    private readonly Dictionary<string, (Button Button, TextBlock Name, TextBlock Capacity, ProgressBar Bar, Image Icon)> driveRows = new(StringComparer.OrdinalIgnoreCase);
     private readonly DriveMonitor monitor;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(10) };
 
     public SidebarView(WorkspaceState workspace, Action<string> navigate)
     {
         this.workspace = workspace; this.navigate = navigate;
-        Background = Brushes.WhiteSmoke;
-        DockPanel.SetDock(target, Dock.Top); Children.Add(target);
-        AutomationProperties.SetAutomationId(target, "Sidebar.Target");
-        target.SetBinding(ToolTipProperty, new Binding("ActivePane.SelectedTab.CurrentPath") { Source = workspace });
-        var body = new StackPanel { Margin = new Thickness(8, 0, 8, 8) };
-        body.Children.Add(new TextBlock { Text = "ブックマーク", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 8, 0, 5) });
-        body.Children.Add(MakeButton("＋ 現在地を登録", "Sidebar.AddBookmark", AddCurrent));
-        body.Children.Add(bookmarks);
-        body.Children.Add(new Separator { Margin = new Thickness(0, 12, 0, 8) });
-        body.Children.Add(new TextBlock { Text = "ドライブ", FontWeight = FontWeights.Bold });
-        body.Children.Add(MakeButton("更新", "Sidebar.RefreshDrives", () => _ = monitor!.RefreshAsync()));
+        Background = new SolidColorBrush(Color.FromRgb(248, 249, 251));
+        var body = new StackPanel { Margin = new Thickness(8, 8, 8, 12) };
+        body.Children.Add(SectionHeader("ドライブ", "↻", "ドライブを更新", "Sidebar.RefreshDrives", () => _ = monitor!.RefreshAsync()));
         body.Children.Add(driveError); body.Children.Add(drives);
+        body.Children.Add(SectionHeader("ブックマーク", "＋", "現在地を登録", "Sidebar.AddBookmark", AddCurrent, 18));
+        body.Children.Add(bookmarks);
         Children.Add(new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         monitor = new(() => Task.Run(() => DriveInfo.GetDrives().Select(d => d.Name).ToArray()), path => Task.Run(() => ReadDrive(path)));
         monitor.PathsChanged += ReconcileDrives;
         monitor.Updated += UpdateDrive;
-        monitor.Failed += message => driveError.Text = "ドライブ一覧を取得できません: " + message;
-        workspace.PropertyChanged += WorkspaceChanged;
+        monitor.Failed += message => { driveError.Text = "ドライブ一覧を取得できません: " + message; driveError.Visibility = Visibility.Visible; };
         ((System.Collections.Specialized.INotifyCollectionChanged)workspace.Sidebar.Bookmarks).CollectionChanged += BookmarksChanged;
         if (workspace.Sidebar.Bookmarks.Count == 0)
         {
-            workspace.Sidebar.Add("ホーム", Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            workspace.Sidebar.Add(Path.GetFileName(home.TrimEnd('\\')), home);
             var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-            if (!string.IsNullOrEmpty(desktop)) workspace.Sidebar.Add("デスクトップ", desktop);
+            if (!string.IsNullOrEmpty(desktop)) workspace.Sidebar.Add(Path.GetFileName(desktop.TrimEnd('\\')), desktop);
         }
-        RenderBookmarks(); UpdateTarget();
+        RenderBookmarks();
         Loaded += Start;
         timer.Tick += Refresh;
     }
 
     private static Button MakeButton(string text, string id, Action action)
     {
-        var button = new Button { Content = text, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(6, 5, 6, 5), Margin = new Thickness(0, 3, 0, 3) };
+        var button = new Button { Content = text, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(5, 6, 5, 6), Margin = new Thickness(0, 1, 0, 1) };
+        button.SetResourceReference(StyleProperty, "SidebarButton");
         AutomationProperties.SetAutomationId(button, id);
         button.Click += (_, _) => action();
         return button;
     }
-    private void WorkspaceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    { if (e.PropertyName == nameof(WorkspaceState.ActivePane)) UpdateTarget(); }
-    private void UpdateTarget() => target.Text = "移動先：" + (workspace.ActivePane == workspace.Left ? "左ペイン" : "右ペイン");
+    private static DockPanel SectionHeader(string title, string symbol, string hint, string id, Action action, double top = 0)
+    {
+        var header = new DockPanel { Margin = new Thickness(4, top, 0, 4) };
+        var button = MakeButton(symbol, id, action);
+        button.Width = 28; button.Height = 28; button.Padding = new Thickness(0);
+        button.HorizontalContentAlignment = HorizontalAlignment.Center; button.FontSize = 18;
+        button.ToolTip = hint; AutomationProperties.SetName(button, hint);
+        DockPanel.SetDock(button, Dock.Right); header.Children.Add(button);
+        header.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(75, 86, 101)), VerticalAlignment = VerticalAlignment.Center });
+        return header;
+    }
     private void BookmarksChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => RenderBookmarks();
     private void AddCurrent()
     {
@@ -77,10 +82,20 @@ public sealed class SidebarView : DockPanel, IDisposable
         foreach (var bookmark in workspace.Sidebar.Bookmarks)
         {
             var button = MakeButton("", "Sidebar.Bookmark." + bookmark.Id, () => navigate(bookmark.Path));
-            var label = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
-            label.SetBinding(TextBlock.TextProperty, new Binding(nameof(BookmarkState.Name)) { Source = bookmark });
-            button.Content = label; button.ToolTip = bookmark.Path;
+            var content = new Grid(); content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) }); content.ColumnDefinitions.Add(new ColumnDefinition());
+            var icon = new Image { Width = 16, Height = 16, HorizontalAlignment = HorizontalAlignment.Left };
+            content.Children.Add(icon);
+            var label = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            var name = new System.Windows.Documents.Run();
+            name.SetBinding(System.Windows.Documents.Run.TextProperty, new Binding(nameof(BookmarkState.Name)) { Source = bookmark, Mode = BindingMode.OneWay });
+            label.Inlines.Add(name);
+            label.Inlines.Add(new System.Windows.Documents.Run($" ({bookmark.Path})") { Foreground = Brushes.DimGray });
+            Grid.SetColumn(label, 1); content.Children.Add(label);
+            button.Content = content;
+            button.SetBinding(ToolTipProperty, new Binding(nameof(BookmarkState.DisplayText)) { Source = bookmark });
+            button.SetBinding(AutomationProperties.HelpTextProperty, new Binding(nameof(BookmarkState.DisplayText)) { Source = bookmark });
             button.SetBinding(AutomationProperties.NameProperty, new Binding(nameof(BookmarkState.Name)) { Source = bookmark });
+            _ = LoadIconAsync(icon, bookmark.Path);
             var menu = new ContextMenu();
             var rename = new MenuItem { Header = "名前を変更" };
             rename.Click += (_, _) => Rename(bookmark);
@@ -112,16 +127,21 @@ public sealed class SidebarView : DockPanel, IDisposable
         try
         {
             var drive = new DriveInfo(path);
-            if (!drive.IsReady) return new(path, path, null, null, "未接続・メディアなし");
+            // IsReadyはアクセス拒否もfalseにするため、実際の取得エラーで未接続と区別する。
+            var total = drive.TotalSize;
+            var free = drive.AvailableFreeSpace;
             var name = drive.VolumeLabel;
-            return new(path, string.IsNullOrEmpty(name) ? path : $"{name} ({path})", drive.TotalSize, drive.AvailableFreeSpace);
+            return new(path, string.IsNullOrEmpty(name) ? path : $"{name}({path})", total, free);
         }
+        catch (IOException ex) when ((ex.HResult & 0xFFFF) is 3 or 15 or 21 or 53 or 67 or 1167)
+        { return new(path, path, null, null, null, DriveAvailability.Unavailable); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or ArgumentException)
-        { return new(path, path, null, null, "容量を取得できません"); }
+        { return new(path, path, null, null, "容量を取得できません", DriveAvailability.Unknown); }
     }
     private void ReconcileDrives(IReadOnlyCollection<string> paths)
     {
         driveError.Text = "";
+        driveError.Visibility = Visibility.Collapsed;
         if (driveRows.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(paths)) return;
         foreach (var removed in driveRows.Keys.Except(paths, StringComparer.OrdinalIgnoreCase).ToArray())
         { drives.Children.Remove(driveRows[removed].Button); driveRows.Remove(removed); }
@@ -129,13 +149,21 @@ public sealed class SidebarView : DockPanel, IDisposable
         {
             if (driveRows.ContainsKey(path)) continue;
             var name = new TextBlock { Text = path, TextTrimming = TextTrimming.CharacterEllipsis };
-            var capacity = new TextBlock { Text = "取得中…", FontSize = 11, TextWrapping = TextWrapping.Wrap };
-            var bar = new ProgressBar { Minimum = 0, Maximum = 100, Height = 5, Margin = new Thickness(0, 5, 0, 3) };
-            var content = new StackPanel(); content.Children.Add(name); content.Children.Add(bar); content.Children.Add(capacity);
+            var capacity = new TextBlock { FontSize = 11, Foreground = Brushes.DimGray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+            var bar = new ProgressBar { Minimum = 0, Maximum = 100, Height = 4, Margin = new Thickness(24, 5, 0, 0), BorderThickness = new Thickness(0), Foreground = new SolidColorBrush(Color.FromRgb(87, 148, 199)), Background = new SolidColorBrush(Color.FromRgb(222, 227, 234)) };
+            var line = new Grid();
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
+            line.ColumnDefinitions.Add(new ColumnDefinition());
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var icon = new Image { Width = 16, Height = 16, HorizontalAlignment = HorizontalAlignment.Left };
+            line.Children.Add(icon); Grid.SetColumn(name, 1); line.Children.Add(name); Grid.SetColumn(capacity, 2); line.Children.Add(capacity);
+            name.VerticalAlignment = VerticalAlignment.Center;
+            var content = new StackPanel(); content.Children.Add(line); content.Children.Add(bar);
             var button = MakeButton("", "Sidebar.Drive." + path, () => navigate(path));
             button.Content = content; button.HorizontalContentAlignment = HorizontalAlignment.Stretch; button.ToolTip = path;
             AutomationProperties.SetName(button, path);
-            driveRows.Add(path, (button, name, capacity, bar));
+            button.Visibility = Visibility.Collapsed;
+            driveRows.Add(path, (button, name, capacity, bar, icon));
         }
         drives.Children.Clear();
         foreach (var row in driveRows.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)) drives.Children.Add(row.Value.Button);
@@ -143,26 +171,41 @@ public sealed class SidebarView : DockPanel, IDisposable
     private void UpdateDrive(DriveSnapshot drive)
     {
         if (!driveRows.TryGetValue(drive.Path, out var row)) return;
-        row.Name.Text = drive.Name;
-        row.Capacity.Text = drive.Error ?? (drive.TotalBytes is long total && drive.FreeBytes is long free ? $"空き {FormatBytes(free)} / {FormatBytes(total)}\n使用率 {drive.UsedPercent:F0}%" : "容量を取得できません");
+        if (drive.Availability == DriveAvailability.Unavailable) { row.Button.Visibility = Visibility.Collapsed; return; }
+        if (drive.Availability == DriveAvailability.Ready)
+        {
+            row.Button.Visibility = Visibility.Visible;
+            row.Name.Text = drive.Name;
+            if (row.Icon.Tag == null) { row.Icon.Tag = drive.Path; _ = LoadIconAsync(row.Icon, drive.Path); }
+        }
+        row.Capacity.Text = drive.TotalBytes is long total && drive.FreeBytes is long free ? $"{FormatBytes(free)}/{FormatBytes(total)}" : "—";
         row.Bar.Value = drive.UsedPercent;
-        row.Bar.Visibility = drive.Error == null ? Visibility.Visible : Visibility.Collapsed;
-        row.Button.ToolTip = drive.Path + "\n" + row.Capacity.Text;
-        AutomationProperties.SetName(row.Button, drive.Name + " " + row.Capacity.Text);
+        row.Bar.Visibility = drive.Error == null && drive.TotalBytes != null ? Visibility.Visible : Visibility.Hidden;
+        row.Button.ToolTip = row.Name.Text + "\n" + (drive.Error ?? $"空き容量 / 総容量：{row.Capacity.Text}\n使用率 {drive.UsedPercent:F0}%");
+        AutomationProperties.SetName(row.Button, row.Name.Text + " " + row.Capacity.Text);
+        AutomationProperties.SetHelpText(row.Button, row.Button.ToolTip.ToString());
     }
     private static string FormatBytes(long bytes)
     {
-        string[] units = ["B", "KiB", "MiB", "GiB", "TiB"];
-        double value = bytes; int unit = 0;
-        while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
-        return $"{value:0.#} {units[unit]}";
+        return $"{bytes / 1073741824.0:F1}GiB";
+    }
+    private async Task LoadIconAsync(Image image, string path)
+    {
+        if (image.Source == null)
+        {
+            var fallback = await icons.GetAsync(null);
+            if (disposed) return;
+            image.Source = fallback;
+        }
+        var actual = await icons.GetAsync(path);
+        if (!disposed && actual != null) image.Source = actual;
     }
     private void Start(object sender, RoutedEventArgs e) { timer.Start(); _ = monitor.RefreshAsync(); }
     private void Refresh(object? sender, EventArgs e) => _ = monitor.RefreshAsync();
     public void Dispose()
     {
         Loaded -= Start; timer.Stop(); timer.Tick -= Refresh; monitor.Dispose();
-        workspace.PropertyChanged -= WorkspaceChanged;
+        disposed = true; icons.Dispose();
         ((System.Collections.Specialized.INotifyCollectionChanged)workspace.Sidebar.Bookmarks).CollectionChanged -= BookmarksChanged;
     }
 }

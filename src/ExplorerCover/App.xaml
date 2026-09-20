@@ -2,6 +2,30 @@
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
  <Application.Resources>
+  <Style x:Key="SidebarButton" TargetType="Button">
+   <Setter Property="Background" Value="Transparent"/>
+   <Setter Property="BorderBrush" Value="Transparent"/>
+   <Setter Property="BorderThickness" Value="1"/>
+   <Setter Property="Foreground" Value="#253040"/>
+   <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+   <Setter Property="Template">
+    <Setter.Value>
+     <ControlTemplate TargetType="Button">
+      <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+       <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+      </Border>
+      <ControlTemplate.Triggers>
+       <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="#E5EDF7"/></Trigger>
+       <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="#D4E3F5"/></Trigger>
+       <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#6B9FD3"/></Trigger>
+       <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.45"/></Trigger>
+      </ControlTemplate.Triggers>
+     </ControlTemplate>
+    </Setter.Value>
+   </Setter>
+  </Style>
+  <SolidColorBrush x:Key="TabSelectionBackground" Color="#DFEDFC"/>
+  <SolidColorBrush x:Key="TabSelectionBorder" Color="#6B9FD3"/>
   <Style x:Key="TabHeader" TargetType="RadioButton">
    <Setter Property="Template">
     <Setter.Value>
@@ -11,7 +35,7 @@
       </Border>
       <ControlTemplate.Triggers>
        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="TabBorder" Property="Background" Value="#E9F1FA"/></Trigger>
-       <Trigger Property="IsChecked" Value="True"><Setter TargetName="TabBorder" Property="Background" Value="#DFEDFC"/><Setter TargetName="TabBorder" Property="BorderBrush" Value="#6B9FD3"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger>
+       <Trigger Property="IsChecked" Value="True"><Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource TabSelectionBackground}"/><Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource TabSelectionBorder}"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger>
        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="TabBorder" Property="BorderBrush" Value="#205D99"/></Trigger>
       </ControlTemplate.Triggers>
      </ControlTemplate>

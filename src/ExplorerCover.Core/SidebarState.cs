@@ -8,10 +8,12 @@ public sealed class BookmarkState(string name, string path) : ObservableState
     public string Path { get; } = path;
     private string name = name;
     public string Name => name;
+    public string DisplayText => $"{Name} ({Path})";
     public void Rename(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
         Set(ref name, value.Trim(), nameof(Name));
+        Notify(nameof(DisplayText));
     }
 }
 
@@ -19,7 +21,7 @@ public sealed class SidebarState : ObservableState
 {
     private readonly ObservableCollection<BookmarkState> bookmarks = [];
     public ReadOnlyObservableCollection<BookmarkState> Bookmarks { get; }
-    private double width = 220;
+    private double width = 280;
     public double Width
     {
         get => width;
@@ -43,7 +45,9 @@ public sealed class SidebarState : ObservableState
     public bool Remove(BookmarkState bookmark) => bookmarks.Remove(bookmark);
 }
 
-public sealed record DriveSnapshot(string Path, string Name, long? TotalBytes, long? FreeBytes, string? Error = null)
+public enum DriveAvailability { Ready, Unavailable, Unknown }
+
+public sealed record DriveSnapshot(string Path, string Name, long? TotalBytes, long? FreeBytes, string? Error = null, DriveAvailability Availability = DriveAvailability.Ready)
 {
     public double UsedPercent => TotalBytes is > 0 && FreeBytes is long free ? Math.Clamp(100.0 * (1.0 - (double)free / TotalBytes.Value), 0, 100) : 0;
 }
@@ -90,11 +94,11 @@ public sealed class DriveMonitor(Func<Task<string[]>> enumerate, Func<string, Ta
         {
             var task = query(path);
             if (await Task.WhenAny(task, Task.Delay(3000)) != task && !disposed && currentPaths.Contains(path) && generation == entry.Generation)
-                Updated?.Invoke(new(path, path, null, null, "応答を待っています…"));
+                Updated?.Invoke(new(path, path, null, null, "応答を待っています…", DriveAvailability.Unknown));
             var result = await task;
             if (!disposed && currentPaths.Contains(path) && generation == entry.Generation) Updated?.Invoke(result);
         }
-        catch (Exception ex) { if (!disposed && currentPaths.Contains(path) && generation == entry.Generation) Updated?.Invoke(new(path, path, null, null, ex.Message)); }
+        catch (Exception ex) { if (!disposed && currentPaths.Contains(path) && generation == entry.Generation) Updated?.Invoke(new(path, path, null, null, ex.Message, DriveAvailability.Unknown)); }
         finally { entry.Busy = false; }
     }
     public void Dispose() => disposed = true;

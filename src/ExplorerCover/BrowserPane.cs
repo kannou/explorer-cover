@@ -17,7 +17,7 @@ public sealed class BrowserPane : Grid, IDisposable
 {
     private sealed record TabView(ExplorerHost Host, TabNavigation Navigation, RadioButton Header);
     private readonly Dictionary<TabState, TabView> views = [];
-    private readonly Grid browsers = new();
+    private readonly Grid browsers = new() { Margin = new Thickness(3, 0, 3, 0) };
     private readonly TabStrip tabs;
     private readonly CommandDispatcher commands;
     private readonly string label;
@@ -47,17 +47,24 @@ public sealed class BrowserPane : Grid, IDisposable
         var tabBar = new DockPanel { Margin = new Thickness(7, 5, 7, 0) };
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
         actions.Children.Add(Button("＋", "新しいタブ", CommandIds.NewTab));
-        actions.Children.Add(Button("複製", "タブを複製", CommandIds.DuplicateTab));
+        var duplicate = Button("", "タブを複製", CommandIds.DuplicateTab);
+        duplicate.Content = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M 5,5 L 5,1 15,1 15,11 11,11 M 1,5 L 11,5 11,15 1,15 Z"),
+            StrokeThickness = 1, Width = 16, Height = 16,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+        };
+        ((System.Windows.Shapes.Path)duplicate.Content).SetBinding(System.Windows.Shapes.Shape.StrokeProperty, new Binding(nameof(Control.Foreground)) { Source = duplicate });
+        actions.Children.Add(duplicate);
         actions.Children.Add(Button("×", "タブを閉じる", CommandIds.CloseTab));
         DockPanel.SetDock(actions, Dock.Right); tabBar.Children.Add(actions);
         tabBar.Children.Add(tabs);
         Children.Add(tabBar);
         var bar = new DockPanel { Margin = new Thickness(7) };
-        bar.Children.Add(new TextBlock { Text = label, Width = 24, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.Bold });
         bar.Children.Add(Button("←", "戻る", CommandIds.Back));
         bar.Children.Add(Button("→", "進む", CommandIds.Forward));
         bar.Children.Add(Button("↑", "ひとつ上へ", CommandIds.Parent));
-        var go = Button("移動", "移動", CommandIds.NavigateAddress);
+        var go = Button("→", "移動", CommandIds.NavigateAddress);
         DockPanel.SetDock(go, Dock.Right); bar.Children.Add(go);
         bar.Children.Add(Address);
         AutomationProperties.SetAutomationId(Address, label + "Address");
@@ -212,7 +219,11 @@ public sealed class BrowserPane : Grid, IDisposable
     {
         this.active = active;
         if (!active) focusAfterNavigation = null;
-        header.Background = active ? new SolidColorBrush(Color.FromRgb(223, 237, 252)) : Brushes.WhiteSmoke;
+        Background = active ? new SolidColorBrush(Color.FromRgb(223, 237, 252)) : new SolidColorBrush(Color.FromRgb(238, 240, 243));
+        header.Background = Background;
+        Address.Background = active ? Brushes.White : new SolidColorBrush(Color.FromRgb(245, 246, 248));
+        Resources["TabSelectionBackground"] = active ? new SolidColorBrush(Color.FromRgb(223, 237, 252)) : new SolidColorBrush(Color.FromRgb(221, 225, 230));
+        Resources["TabSelectionBorder"] = active ? new SolidColorBrush(Color.FromRgb(107, 159, 211)) : Brushes.DarkGray;
     }
     public void Dispose()
     {
