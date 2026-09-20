@@ -23,7 +23,7 @@ public sealed class SidebarView : DockPanel, IDisposable
     private readonly DriveMonitor monitor;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(10) };
 
-    public SidebarView(WorkspaceState workspace, Action<string> navigate)
+    public SidebarView(WorkspaceState workspace, Action<string> navigate, bool initializeBookmarks = true)
     {
         this.workspace = workspace; this.navigate = navigate;
         Background = new SolidColorBrush(Color.FromRgb(248, 249, 251));
@@ -38,7 +38,7 @@ public sealed class SidebarView : DockPanel, IDisposable
         monitor.Updated += UpdateDrive;
         monitor.Failed += message => { driveError.Text = "ドライブ一覧を取得できません: " + message; driveError.Visibility = Visibility.Visible; };
         ((System.Collections.Specialized.INotifyCollectionChanged)workspace.Sidebar.Bookmarks).CollectionChanged += BookmarksChanged;
-        if (workspace.Sidebar.Bookmarks.Count == 0)
+        if (initializeBookmarks && workspace.Sidebar.Bookmarks.Count == 0)
         {
             var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             workspace.Sidebar.Add(Path.GetFileName(home.TrimEnd('\\')), home);

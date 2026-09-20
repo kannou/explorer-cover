@@ -27,10 +27,13 @@ public sealed class MainWindow : Window
     private bool previewTracking;
     private string? lastPreviewSelection;
     public WorkspaceState State { get; }
+    private readonly TextBlock saveWarning = new() { Foreground = Brushes.Firebrick, Margin = new Thickness(10, 4, 10, 4), Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap };
+    public void ShowSaveWarning(string? message) { saveWarning.Text = message ?? ""; saveWarning.Visibility = message == null ? Visibility.Collapsed : Visibility.Visible; }
 
-    public MainWindow(string leftPath, string rightPath, ShortcutService shortcuts, string? settingsWarning = null, MouseSettings? mouseSettings = null, QuickLookSettings? quickLookSettings = null)
+    public MainWindow(string leftPath, string rightPath, ShortcutService shortcuts, string? settingsWarning = null, MouseSettings? mouseSettings = null, QuickLookSettings? quickLookSettings = null, WorkspaceState? restored = null)
     {
-        State = new(leftPath, rightPath);
+        State = restored ?? new(leftPath, rightPath);
+        var initialActivePane = State.ActivePane;
         this.shortcuts = shortcuts;
         quickLook = new(quickLookSettings ?? new());
         previewSelectionTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
@@ -42,6 +45,7 @@ public sealed class MainWindow : Window
         var root = new DockPanel();
         help = new TextBlock { Margin = new Thickness(10, 7, 10, 7), Foreground = Brushes.DimGray, TextWrapping = TextWrapping.Wrap };
         DockPanel.SetDock(help, Dock.Bottom); root.Children.Add(help);
+        DockPanel.SetDock(saveWarning, Dock.Bottom); root.Children.Add(saveWarning);
         if (settingsWarning != null)
         {
             var warning = new TextBlock { Text = settingsWarning, Foreground = Brushes.Firebrick, Margin = new Thickness(10, 4, 10, 4), TextWrapping = TextWrapping.Wrap };
@@ -54,6 +58,7 @@ public sealed class MainWindow : Window
         left = new BrowserPane("左", State.Left, commands, mouseSettings ?? new()); right = new BrowserPane("右", State.Right, commands, mouseSettings ?? new());
         grid.Children.Add(left);
         var splitter = new GridSplitter { Width = 7, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch, Background = Brushes.LightGray, ResizeDirection = GridResizeDirection.Columns, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(splitter, "Pane.Splitter");
         splitter.DragCompleted += (_, _) =>
         {
             var total = grid.ColumnDefinitions[0].ActualWidth + grid.ColumnDefinitions[2].ActualWidth;
@@ -65,7 +70,7 @@ public sealed class MainWindow : Window
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(State.Sidebar.Width), MinWidth = 160, MaxWidth = 380 });
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(5) });
         layout.ColumnDefinitions.Add(new ColumnDefinition());
-        sidebar = new(State, path => ViewFor(State.ActivePane).Navigate(path));
+        sidebar = new(State, path => ViewFor(State.ActivePane).Navigate(path), restored == null);
         layout.Children.Add(sidebar);
         var sidebarSplitter = new GridSplitter { Width = 5, HorizontalAlignment = HorizontalAlignment.Stretch, Background = Brushes.LightGray, ResizeDirection = GridResizeDirection.Columns, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
         System.Windows.Automation.AutomationProperties.SetAutomationId(sidebarSplitter, "Sidebar.Splitter");
@@ -97,6 +102,7 @@ public sealed class MainWindow : Window
         Register(CommandIds.QuickView, v => _ = PreviewAsync(v, previewKey), v => v.CanNavigate && !previewPending);
         shortcuts.Changed += UpdateHelp;
         UpdateActivePane(); UpdateHelp();
+        Loaded += (_, _) => { State.Activate(initialActivePane); ViewFor(initialActivePane).FocusAddress(); };
         ComponentDispatcher.ThreadFilterMessage += FilterMessage;
         PreviewKeyDown += HandleWpfKey;
         Closed += (_, _) =>
@@ -115,7 +121,7 @@ public sealed class MainWindow : Window
         commands.Register(id, pane => { State.Activate(pane); run(ViewFor(pane)); }, pane => canRun?.Invoke(ViewFor(pane)) ?? true);
     private BrowserPane? NativeFocusedPane => left.Browser.ContainsNativeFocus ? left : right.Browser.ContainsNativeFocus ? right : null;
     private void UpdateActivePane() { left.SetActive(State.ActivePane == State.Left); right.SetActive(State.ActivePane == State.Right); }
-    private void UpdateHelp() => help.Text = $"{shortcuts.Map.Display(CommandIds.FocusAddress)}: パス入力  ·  {shortcuts.Map.Display(CommandIds.SwitchPane)}: 左右切替  ·  {shortcuts.Map.Display(CommandIds.NewTab)}: 新しいタブ  ·  {shortcuts.Map.Display(CommandIds.CloseTab)}: 閉じる  ·  {shortcuts.Map.Display(CommandIds.NextTab)}: 次のタブ  ·  {shortcuts.Map.Display(CommandIds.Back)} / {shortcuts.Map.Display(CommandIds.Forward)}: 戻る／進む  ·  {shortcuts.Map.Display(CommandIds.QuickView)}: QuickLook  ｜  終了時の状態保存は未実装";
+    private void UpdateHelp() => help.Text = $"{shortcuts.Map.Display(CommandIds.FocusAddress)}: パス入力  ·  {shortcuts.Map.Display(CommandIds.SwitchPane)}: 左右切替  ·  {shortcuts.Map.Display(CommandIds.NewTab)}: 新しいタブ  ·  {shortcuts.Map.Display(CommandIds.CloseTab)}: 閉じる  ·  {shortcuts.Map.Display(CommandIds.NextTab)}: 次のタブ  ·  {shortcuts.Map.Display(CommandIds.Back)} / {shortcuts.Map.Display(CommandIds.Forward)}: 戻る／進む  ·  {shortcuts.Map.Display(CommandIds.QuickView)}: QuickLook";
 
     private async Task PreviewAsync(BrowserPane pane, int key)
     {

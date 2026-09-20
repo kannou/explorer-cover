@@ -303,5 +303,91 @@ Check("未接続ドライブも更新対象に残し、次の更新で利用可�
     monitor.RefreshAsync().GetAwaiter().GetResult();
     Equal(2, calls); Equal(DriveAvailability.Unavailable, updates[0].Availability); Equal(DriveAvailability.Ready, updates[1].Availability);
 });
+Check("作業状態は順序・選択・幅・ブックマークを復元し、編集文字列と履歴は保存しない", () =>
+{
+    var state = new WorkspaceState(@"C:\first", @"\\wsl.localhost\Ubuntu\home\missing");
+    var tab = state.Left.AddTab(@"C:\second"); tab.NavigationSucceeded(@"C:\visited"); tab.AddressText = @"C:\未確定";
+    state.Left.MoveTab(tab, 0); state.Left.SelectTab(tab); state.Activate(state.Right);
+    state.LeftPaneRatio = 0.65; state.Sidebar.Width = 320;
+    state.Sidebar.Add("Case", @"\\wsl$\Ubuntu\home\Case"); state.Sidebar.Add("case", @"\\wsl$\Ubuntu\home\case");
+    var restored = WorkspaceSnapshot.FromJson(WorkspaceSnapshot.Capture(state).ToJson()).Restore();
+    Equal(@"C:\visited", restored.Left.Tabs[0].InitialPath); Equal(0, restored.Left.Tabs.IndexOf(restored.Left.SelectedTab));
+    Equal(0, restored.Left.SelectedTab.History.Entries.Count); Equal(@"C:\visited", restored.Left.SelectedTab.AddressText);
+    Equal(restored.Right, restored.ActivePane); Equal(0.65, restored.LeftPaneRatio); Equal(320d, restored.Sidebar.Width); Equal(2, restored.Sidebar.Bookmarks.Count);
+    Equal(@"\\wsl.localhost\Ubuntu\home\missing", restored.Right.SelectedTab.InitialPath);
+    foreach (var b in state.Sidebar.Bookmarks.ToArray()) state.Sidebar.Remove(b);
+    Equal(0, WorkspaceSnapshot.FromJson(WorkspaceSnapshot.Capture(state).ToJson()).Restore().Sidebar.Bookmarks.Count);
+});
+Check("不正な状態と将来バージョンを拒否する", () =>
+{
+    var snapshot = WorkspaceSnapshot.Capture(new WorkspaceState(@"C:\a", @"C:\b"));
+    Throws<FormatException>(() => (snapshot with { Left = new([], 0) }).ToJson());
+    Throws<FormatException>(() => (snapshot with { Right = new([@"C:\b"], 1) }).ToJson());
+    Throws<FormatException>(() => (snapshot with { SidebarWidth = double.NaN }).ToJson());
+    Throws<FormatException>(() => WorkspaceSnapshot.FromJson("[]"));
+    Throws<NotSupportedException>(() => WorkspaceSnapshot.FromJson("{\"version\":99}"));
+});
+Check("状態を安全に置換しバックアップを作り、同時保存を防ぐ", () =>
+{
+    var directory = Directory.CreateDirectory(Path.Combine(Environment.CurrentDirectory, "artifacts", "store-" + Guid.NewGuid().ToString("N"))).FullName;
+    var path = Path.Combine(directory, "workspace.json");
+    var state = new WorkspaceState(@"C:\a", @"C:\b");
+    var first = WorkspaceSnapshot.Capture(state).ToJson();
+    using (var store = new WorkspaceStore(path))
+    {
+        Equal<WorkspaceSnapshot?>(null, store.Load().Snapshot); store.Save(first);
+        state.Sidebar.Width = 330; store.Save(WorkspaceSnapshot.Capture(state).ToJson());
+        Equal(first, File.ReadAllText(path + ".bak")); Equal(0, Directory.GetFiles(directory, "*.tmp-*").Length);
+        using var second = new WorkspaceStore(path); Equal(true, second.Load().Warning != null); Equal(false, second.CanSave);
+        Throws<InvalidOperationException>(() => second.Save(first));
+    }
+    using var reopened = new WorkspaceStore(path); Equal(330d, reopened.Load().Snapshot!.SidebarWidth);
+});
+Check("破損した状態は原本を退避してバックアップから回復し、将来形式を上書きしない", () =>
+{
+    var directory = Directory.CreateDirectory(Path.Combine(Environment.CurrentDirectory, "artifacts", "recovery-" + Guid.NewGuid().ToString("N"))).FullName;
+    var path = Path.Combine(directory, "workspace.json");
+    var json = WorkspaceSnapshot.Capture(new WorkspaceState(@"C:\a", @"C:\b")).ToJson();
+    File.WriteAllText(path, "broken"); File.WriteAllText(path + ".bak", json);
+    using (var store = new WorkspaceStore(path))
+    {
+        var loaded = store.Load(); Equal(true, loaded.Warning != null); Equal(json, loaded.Snapshot!.ToJson());
+        Equal("broken", File.ReadAllText(Directory.GetFiles(directory, "*.invalid-*").Single()));
+        store.Save(json); Equal(json, File.ReadAllText(path));
+    }
+    File.WriteAllText(path, "{\"version\":99}");
+    using var future = new WorkspaceStore(path); Equal(true, future.Load().Warning != null); Equal(false, future.CanSave);
+    Equal("{\"version\":99}", File.ReadAllText(path));
+});
+Check("置換に失敗しても前の状態を壊さず、一時ファイルを片付けて再試行できる", () =>
+{
+    var directory = Directory.CreateDirectory(Path.Combine(Environment.CurrentDirectory, "artifacts", "save-failure-" + Guid.NewGuid().ToString("N"))).FullName;
+    var path = Path.Combine(directory, "workspace.json");
+    var state = new WorkspaceState(@"C:\a", @"C:\b"); var first = WorkspaceSnapshot.Capture(state).ToJson();
+    using var store = new WorkspaceStore(path); store.Load(); store.Save(first);
+    state.Sidebar.Width = 350; var changed = WorkspaceSnapshot.Capture(state).ToJson();
+    using (var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+    {
+        Throws<IOException>(() => store.Save(changed)); Equal(first, File.ReadAllText(path));
+        Equal(0, Directory.GetFiles(directory, "*.tmp-*").Length);
+    }
+    store.Save(changed); Equal(changed, File.ReadAllText(path));
+});
+Check("ウィンドウの保存は旧形式と互換性を保ち、通常矩形と最大化を往復する", () =>
+{
+    var original = WorkspaceSnapshot.Capture(new WorkspaceState(@"C:\a", @"C:\b"));
+    var oldJson = original.ToJson().Replace(",\r\n  \"window\": null", "").Replace(",\n  \"window\": null", "");
+    Equal<WindowSnapshot?>(null, WorkspaceSnapshot.FromJson(oldJson).Window);
+    var placed = original with { Window = new(-1400, 40, 1100, 700, true) };
+    Equal(placed.Window, WorkspaceSnapshot.FromJson(placed.ToJson()).Window);
+    Throws<FormatException>(() => (original with { Window = new(0, 0, 0, 700, false) }).ToJson());
+});
+Check("画面外と過大サイズを作業領域へ補正し、負座標のモニターを維持する", () =>
+{
+    var onLeftMonitor = new WindowSnapshot(-1800, 50, 1000, 700, true);
+    Equal(onLeftMonitor, onLeftMonitor.FitToWorkArea(-1920, 30, 1920, 1050));
+    Equal(new WindowSnapshot(0, 40, 1280, 680, false), new WindowSnapshot(500000, -500000, 8000, 8000, false).FitToWorkArea(0, 40, 1280, 680));
+    Equal(new WindowSnapshot(280, 0, 1000, 600, true), new WindowSnapshot(5000, -400, 1000, 600, true).FitToWorkArea(0, 0, 1280, 720));
+});
 Console.WriteLine($"{count - failures.Count}/{count} passed");
 return failures.Count == 0 ? 0 : 1;

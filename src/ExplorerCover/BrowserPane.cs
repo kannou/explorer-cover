@@ -73,7 +73,7 @@ public sealed class BrowserPane : Grid, IDisposable
         SetRow(browsers, 2); Children.Add(browsers);
         SetRow(status, 3); Children.Add(status);
         AutomationProperties.SetAutomationId(status, label + "Status");
-        AddView(state.SelectedTab);
+        foreach (var tab in state.Tabs) AddView(tab);
         state.PropertyChanged += PaneChanged;
         Address.GotKeyboardFocus += (_, _) => Activated?.Invoke();
         PreviewMouseDown += (_, _) => Activated?.Invoke();
@@ -99,7 +99,7 @@ public sealed class BrowserPane : Grid, IDisposable
         tabHeader.Checked += (_, _) => { if (!disposed) { State.SelectTab(tab); Activated?.Invoke(); } };
         AutomationProperties.SetAutomationId(tabHeader, label + ".tab." + tab.Id);
         views.Add(tab, new(host, navigation, tabHeader));
-        tabs.Add(tab, tabHeader); browsers.Children.Add(host);
+        tabs.Add(tab, tabHeader);
         host.Navigated += path =>
         {
             if (disposed || !views.ContainsKey(tab)) return;
@@ -131,6 +131,8 @@ public sealed class BrowserPane : Grid, IDisposable
             view.Host.Visibility = tab == State.SelectedTab ? Visibility.Visible : Visibility.Hidden;
             view.Header.IsChecked = tab == State.SelectedTab;
         }
+        // 復元した非選択タブは、初めて選択した時にネイティブビューを作る。
+        if (!browsers.Children.Contains(Browser)) browsers.Children.Add(Browser);
         Address.SetBinding(TextBox.TextProperty, new Binding(nameof(TabState.AddressText)) { Source = State.SelectedTab, Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
         tabs.Reveal(State.SelectedTab);
         UpdateStatus();

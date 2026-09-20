@@ -31,7 +31,7 @@ Releaseビルドは警告・エラーなし。Coreテスト22件が成功。未�
 
 `scripts/Verify-QuickLook.ps1`も成功。Spaceでの開閉、選択変更への追従、日本語IME、シェルの名前変更、左右間のドラッグ移動、ZIPプレビューを確認した。ログ: `artifacts/quicklook-0aa8547162b946d79273330b0bc6980d/app.log`。
 
-ブックマークや幅の保存は6bで実装する。次の実装予定は6a-3のWSLフォルダー対応。
+ブックマークや幅の保存は[6bの保存・復元](PERSISTENCE.md)で実装した。WSL対応の記録は[6a-3](WSL.md)を参照。
 
 追加の外観調整後もReleaseビルド（警告・エラーなし）と`Verify-Sidebar.ps1`が成功。左右ラベルの削除、移動・複製の記号、アクティブ側の薄い青色を画像で確認した。ログ・画像: `artifacts/sidebar-ed5e15bb85e0421ebd1a29bffb0f3e35/`。
 
