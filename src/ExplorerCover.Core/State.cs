@@ -139,6 +139,7 @@ public sealed class PaneState : ObservableState
 
 public sealed class WorkspaceState : ObservableState
 {
+    public SidebarState Sidebar { get; } = new();
     public PaneState Left { get; }
     public PaneState Right { get; }
     private PaneState activePane;

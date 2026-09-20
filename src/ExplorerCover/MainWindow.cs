@@ -14,6 +14,7 @@ public sealed class MainWindow : Window
 {
     private readonly BrowserPane left;
     private readonly BrowserPane right;
+    private readonly SidebarView sidebar;
     private readonly CommandDispatcher commands = new();
     private readonly ShortcutService shortcuts;
     private readonly TextBlock help;
@@ -36,7 +37,7 @@ public sealed class MainWindow : Window
         previewSelectionTimer.Tick += PreviewSelectionChanged;
         previewSelectionTimer.Start();
         Title = "explorer_cover — 2ペイン試作";
-        Width = 1200; Height = 740; MinWidth = 700; MinHeight = 380;
+        Width = Math.Min(1400, SystemParameters.WorkArea.Width); Height = 740; MinWidth = 900; MinHeight = 380;
         FontFamily = new FontFamily("Yu Gothic UI"); FontSize = 13;
         var root = new DockPanel();
         help = new TextBlock { Margin = new Thickness(10, 7, 10, 7), Foreground = Brushes.DimGray, TextWrapping = TextWrapping.Wrap };
@@ -60,7 +61,18 @@ public sealed class MainWindow : Window
         };
         Grid.SetColumn(splitter, 1); grid.Children.Add(splitter);
         Grid.SetColumn(right, 2); grid.Children.Add(right);
-        root.Children.Add(grid); Content = root;
+        var layout = new Grid();
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(State.Sidebar.Width), MinWidth = 160, MaxWidth = 380 });
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(5) });
+        layout.ColumnDefinitions.Add(new ColumnDefinition());
+        sidebar = new(State, path => ViewFor(State.ActivePane).Navigate(path));
+        layout.Children.Add(sidebar);
+        var sidebarSplitter = new GridSplitter { Width = 5, HorizontalAlignment = HorizontalAlignment.Stretch, Background = Brushes.LightGray, ResizeDirection = GridResizeDirection.Columns, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(sidebarSplitter, "Sidebar.Splitter");
+        sidebarSplitter.DragCompleted += (_, _) => State.Sidebar.Width = Math.Clamp(layout.ColumnDefinitions[0].ActualWidth, 160, 380);
+        Grid.SetColumn(sidebarSplitter, 1); layout.Children.Add(sidebarSplitter);
+        Grid.SetColumn(grid, 2); layout.Children.Add(grid);
+        root.Children.Add(layout); Content = root;
         left.Activated += () => State.Activate(State.Left);
         right.Activated += () => State.Activate(State.Right);
         State.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(WorkspaceState.ActivePane)) UpdateActivePane(); };
@@ -94,7 +106,7 @@ public sealed class MainWindow : Window
             previewSelectionTimer.Tick -= PreviewSelectionChanged;
             ComponentDispatcher.ThreadFilterMessage -= FilterMessage;
             shortcuts.Changed -= UpdateHelp;
-            left.Dispose(); right.Dispose();
+            sidebar.Dispose(); left.Dispose(); right.Dispose();
         };
     }
 

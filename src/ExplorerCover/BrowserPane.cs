@@ -176,7 +176,7 @@ public sealed class BrowserPane : Grid, IDisposable
         FocusFiles();
     }
     public void NavigateAddress() => Navigate(State.SelectedTab.AddressText);
-    private void Navigate(string path)
+    public void Navigate(string path)
     {
         if (!CanNavigate) return;
         focusAfterNavigation = State.SelectedTab;

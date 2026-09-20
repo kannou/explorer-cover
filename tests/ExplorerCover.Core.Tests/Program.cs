@@ -215,5 +215,57 @@ Check("QuickLook起動先の自動検出・手動設定と不正設定", () =>
         "{\"version\":1,\"executablePath\":\"relative.exe\"}", "{\"version\":1,\"executablePath\":null,\"executablePath\":null}" })
         Throws<FormatException>(() => QuickLookSettings.FromJson(json));
 });
+Check("ブックマークの登録・重複防止・改名・削除と幅の検証", () =>
+{
+    var sidebar = new SidebarState();
+    var bookmark = sidebar.Add(" 作業 ", @"C:\work");
+    Equal("作業", bookmark.Name);
+    Equal(bookmark, sidebar.Add("別名", @"c:\work\"));
+    Equal(1, sidebar.Bookmarks.Count);
+    bookmark.Rename(" 資料 "); Equal("資料", bookmark.Name); Equal(@"C:\work", bookmark.Path);
+    Throws<ArgumentException>(() => bookmark.Rename(" "));
+    Equal(true, sidebar.Remove(bookmark)); Equal(false, sidebar.Remove(bookmark));
+    Throws<ArgumentOutOfRangeException>(() => sidebar.Width = double.NaN);
+    Throws<ArgumentOutOfRangeException>(() => sidebar.Width = 10);
+    sidebar.Width = 300; Equal(300d, sidebar.Width);
+    Equal(75d, new DriveSnapshot("C", "C", 100, 25).UsedPercent);
+    Equal(0d, new DriveSnapshot("C", "C", 0, 0).UsedPercent);
+});
+Check("容量取得はドライブごとに独立し重複要求・切断後の古い結果を防ぐ", () =>
+{
+    string[] paths = ["slow", "fast"];
+    var pending = new TaskCompletionSource<DriveSnapshot>();
+    var calls = 0;
+    var updates = new List<DriveSnapshot>();
+    using var monitor = new DriveMonitor(() => Task.FromResult(paths), path =>
+    {
+        if (path == "slow") { calls++; return calls == 1 ? pending.Task : Task.FromResult(new DriveSnapshot(path, "new volume", 300, 100)); }
+        return Task.FromResult(new DriveSnapshot(path, path, 100, 25));
+    });
+    monitor.Updated += updates.Add;
+    monitor.RefreshAsync().GetAwaiter().GetResult();
+    Equal(1, updates.Count); Equal("fast", updates[0].Path);
+    monitor.RefreshAsync().GetAwaiter().GetResult(); Equal(1, calls);
+    paths = ["fast"]; monitor.RefreshAsync().GetAwaiter().GetResult();
+    paths = ["slow", "fast"]; monitor.RefreshAsync().GetAwaiter().GetResult(); Equal(1, calls);
+    pending.SetResult(new("slow", "old volume", 200, 10));
+    Equal(true, SpinWait.SpinUntil(() => { monitor.RefreshAsync().GetAwaiter().GetResult(); return calls == 2; }, 2000));
+    Equal(false, updates.Any(d => d.Name == "old volume"));
+    Equal(true, updates.Any(d => d.Name == "new volume"));
+    monitor.Dispose();
+    var before = updates.Count;
+    monitor.RefreshAsync().GetAwaiter().GetResult(); Equal(before, updates.Count);
+});
+Check("容量取得の失敗を他ドライブへ波及させない", () =>
+{
+    var updates = new List<DriveSnapshot>();
+    using var monitor = new DriveMonitor(() => Task.FromResult(new[] { "denied", "ready" }), path =>
+        path == "denied" ? Task.FromException<DriveSnapshot>(new UnauthorizedAccessException("アクセスできません")) : Task.FromResult(new DriveSnapshot(path, path, 100, 75)));
+    monitor.Updated += updates.Add;
+    monitor.RefreshAsync().GetAwaiter().GetResult();
+    Equal(2, updates.Count);
+    Equal("アクセスできません", updates.Single(d => d.Path == "denied").Error);
+    Equal(75L, updates.Single(d => d.Path == "ready").FreeBytes);
+});
 Console.WriteLine($"{count - failures.Count}/{count} passed");
 return failures.Count == 0 ? 0 : 1;
