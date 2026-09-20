@@ -58,10 +58,18 @@ public sealed class MainWindow : Window
         {
             var other = State.OtherPane(pane);
             State.Activate(other);
-            ViewFor(other).Browser.FocusView();
+            ViewFor(other).FocusFiles();
         });
         commands.Register(CommandIds.NavigateAddress, pane => { State.Activate(pane); ViewFor(pane).NavigateAddress(); },
-            pane => !string.IsNullOrWhiteSpace(pane.SelectedTab.AddressText));
+            pane => ViewFor(pane).CanNavigate && !string.IsNullOrWhiteSpace(pane.SelectedTab.AddressText));
+        Register(CommandIds.NewTab, v => v.AddTab(false));
+        Register(CommandIds.DuplicateTab, v => v.AddTab(true));
+        Register(CommandIds.CloseTab, v => v.CloseTab(), v => v.State.Tabs.Count > 1);
+        Register(CommandIds.NextTab, v => v.CycleTab(1), v => v.State.Tabs.Count > 1);
+        Register(CommandIds.PreviousTab, v => v.CycleTab(-1), v => v.State.Tabs.Count > 1);
+        Register(CommandIds.Back, v => v.NavigateHistory(-1), v => v.CanNavigate && v.State.SelectedTab.History.CanGoBack);
+        Register(CommandIds.Forward, v => v.NavigateHistory(1), v => v.CanNavigate && v.State.SelectedTab.History.CanGoForward);
+        Register(CommandIds.Parent, v => v.NavigateParent(), v => v.CanNavigate && v.ParentPath != null);
         shortcuts.Changed += UpdateHelp;
         UpdateActivePane(); UpdateHelp();
         ComponentDispatcher.ThreadFilterMessage += FilterMessage;
@@ -75,9 +83,11 @@ public sealed class MainWindow : Window
     }
 
     private BrowserPane ViewFor(PaneState pane) => pane == State.Left ? left : pane == State.Right ? right : throw new ArgumentException("不明なペインです。");
+    private void Register(string id, Action<BrowserPane> run, Predicate<BrowserPane>? canRun = null) =>
+        commands.Register(id, pane => { State.Activate(pane); run(ViewFor(pane)); }, pane => canRun?.Invoke(ViewFor(pane)) ?? true);
     private BrowserPane? NativeFocusedPane => left.Browser.ContainsNativeFocus ? left : right.Browser.ContainsNativeFocus ? right : null;
     private void UpdateActivePane() { left.SetActive(State.ActivePane == State.Left); right.SetActive(State.ActivePane == State.Right); }
-    private void UpdateHelp() => help.Text = $"{shortcuts.Map.Display(CommandIds.FocusAddress)}: パス入力  ·  {shortcuts.Map.Display(CommandIds.SwitchPane)}: 左右切替  ·  {shortcuts.Map.Display(CommandIds.FocusFiles)}: 一覧に戻る  ｜  タブ・状態保存は未実装";
+    private void UpdateHelp() => help.Text = $"{shortcuts.Map.Display(CommandIds.FocusAddress)}: パス入力  ·  {shortcuts.Map.Display(CommandIds.SwitchPane)}: 左右切替  ·  {shortcuts.Map.Display(CommandIds.NewTab)}: 新しいタブ  ·  {shortcuts.Map.Display(CommandIds.CloseTab)}: 閉じる  ·  {shortcuts.Map.Display(CommandIds.NextTab)}: 次のタブ  ·  {shortcuts.Map.Display(CommandIds.Back)} / {shortcuts.Map.Display(CommandIds.Forward)}: 戻る／進む  ｜  終了時の状態保存は未実装";
 
     private bool DispatchShortcut(ShortcutGesture gesture, ShortcutScope scope, PaneState pane, bool repeated)
     {

@@ -45,7 +45,7 @@ public sealed class NavigationHistory
         Index = entries.Count - 1;
     }
 
-    private static bool SameLocation(string a, string b) =>
+    public static bool SameLocation(string a, string b) =>
         string.Equals(a.TrimEnd('\\', '/'), b.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
 }
 
@@ -71,6 +71,28 @@ public sealed class TabState : ObservableState
     }
     public void NavigationFailed(string message) => Error = message;
     public void CancelAddressEdit() => AddressText = CurrentPath ?? InitialPath;
+}
+
+// 1タブの移動要求と完了通知を結び付ける。履歴のカーソルは成功時だけ確定する。
+public sealed class TabNavigation(TabState tab)
+{
+    private int? pendingIndex;
+    public string? BeginHistory(int offset)
+    {
+        var index = tab.History.Index + offset;
+        if (offset is not (-1 or 1) || index < 0 || index >= tab.History.Entries.Count) return null;
+        pendingIndex = index;
+        return tab.History.Entries[index];
+    }
+    public void Complete(string path)
+    {
+        var index = pendingIndex;
+        pendingIndex = null;
+        // リダイレクト等で別の場所に着いた場合は通常の移動として記録する。
+        if (index is int i && !NavigationHistory.SameLocation(tab.History.Entries[i], path)) index = null;
+        tab.NavigationSucceeded(path, index);
+    }
+    public void Fail(string message) { pendingIndex = null; tab.NavigationFailed(message); }
 }
 
 public sealed class PaneState : ObservableState

@@ -37,7 +37,7 @@ function Wait-Until([scriptblock]$check) {
 }
 function Elements { @($script:window.FindAll($scope,$all)) }
 function Value($element) { $element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern) }
-function Press([ushort[]]$keys) { [FoundationInput]::Chord($keys); Start-Sleep -Milliseconds 250 }
+function Press([uint16[]]$keys) { [FoundationInput]::Chord($keys); Start-Sleep -Milliseconds 250 }
 try {
  foreach ($profile in $Profiles) {
   $json = switch ($profile) {

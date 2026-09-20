@@ -1,4 +1,7 @@
+using System.ComponentModel;
+using System.IO;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -12,60 +15,203 @@ namespace ExplorerCover;
 
 public sealed class BrowserPane : Grid, IDisposable
 {
-    public ExplorerHost Browser { get; }
+    private sealed record TabView(ExplorerHost Host, TabNavigation Navigation, RadioButton Header);
+    private readonly Dictionary<TabState, TabView> views = [];
+    private readonly Grid browsers = new();
+    private readonly StackPanel tabs = new() { Orientation = Orientation.Horizontal };
+    private readonly CommandDispatcher commands;
+    private readonly string label;
+    private TabState? focusAfterNavigation;
+    private bool disposed;
+    private bool active;
+    private readonly string initialPath;
+    public ExplorerHost Browser => views[State.SelectedTab].Host;
     public PaneState State { get; }
-    private readonly TabState tab;
-    public TextBox Address { get; } = new() { MinWidth = 80 };
+    public bool CanNavigate => !Browser.IsNavigating;
+    public TextBox Address { get; } = new() { MinWidth = 40 };
     private readonly TextBlock status = new() { Text = "読み込み中…", TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(8, 5, 8, 5) };
     private readonly Border header;
     public event Action? Activated;
 
     public BrowserPane(string label, PaneState state, CommandDispatcher commands)
     {
-        State = state;
-        tab = state.SelectedTab;
+        State = state; this.commands = commands; this.label = label;
+        initialPath = state.SelectedTab.InitialPath;
+        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RowDefinitions.Add(new RowDefinition());
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var tabBar = new DockPanel { Margin = new Thickness(7, 5, 7, 0) };
+        var actions = new StackPanel { Orientation = Orientation.Horizontal };
+        actions.Children.Add(Button("＋", "新しいタブ", CommandIds.NewTab));
+        actions.Children.Add(Button("複製", "タブを複製", CommandIds.DuplicateTab));
+        actions.Children.Add(Button("×", "タブを閉じる", CommandIds.CloseTab));
+        DockPanel.SetDock(actions, Dock.Right); tabBar.Children.Add(actions);
+        tabBar.Children.Add(new ScrollViewer { Content = tabs, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        Children.Add(tabBar);
         var bar = new DockPanel { Margin = new Thickness(7) };
-        bar.Children.Add(new TextBlock { Text = label, Width = 32, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.Bold });
-        var go = new Button { Content = "移動", Command = new PaneCommand(commands, CommandIds.NavigateAddress, state) };
-        DockPanel.SetDock(go, Dock.Right);
-        bar.Children.Add(go);
+        bar.Children.Add(new TextBlock { Text = label, Width = 24, VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.Bold });
+        bar.Children.Add(Button("←", "戻る", CommandIds.Back));
+        bar.Children.Add(Button("→", "進む", CommandIds.Forward));
+        bar.Children.Add(Button("↑", "ひとつ上へ", CommandIds.Parent));
+        var go = Button("移動", "移動", CommandIds.NavigateAddress);
+        DockPanel.SetDock(go, Dock.Right); bar.Children.Add(go);
         bar.Children.Add(Address);
-        Address.SetBinding(TextBox.TextProperty, new Binding(nameof(TabState.AddressText)) { Source = tab, Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+        AutomationProperties.SetAutomationId(Address, label + "Address");
         header = new Border { Child = bar, Background = Brushes.WhiteSmoke };
-        Children.Add(header);
-        Browser = new ExplorerHost(tab.InitialPath);
-        SetRow(Browser, 1);
-        Children.Add(Browser);
-        SetRow(status, 2);
-        Children.Add(status);
-        Browser.Navigated += current => tab.NavigationSucceeded(current);
-        Browser.Error += tab.NavigationFailed;
-        Browser.Activated += () => { if (Browser.ContainsNativeFocus) Activated?.Invoke(); };
+        SetRow(header, 1); Children.Add(header);
+        SetRow(browsers, 2); Children.Add(browsers);
+        SetRow(status, 3); Children.Add(status);
+        AutomationProperties.SetAutomationId(status, label + "Status");
+        AddView(state.SelectedTab);
+        state.PropertyChanged += PaneChanged;
         Address.GotKeyboardFocus += (_, _) => Activated?.Invoke();
-        tab.PropertyChanged += TabChanged;
+        PreviewMouseDown += (_, _) => Activated?.Invoke();
+        GotKeyboardFocus += (_, _) => Activated?.Invoke();
+        SelectView();
     }
 
-    private void TabChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private Button Button(string text, string name, string command)
     {
+        var button = new Button { Content = text, ToolTip = name, Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(0, 0, 3, 0), Command = new PaneCommand(commands, command, State) };
+        AutomationProperties.SetName(button, name);
+        AutomationProperties.SetAutomationId(button, label + "." + command);
+        return button;
+    }
+
+    private void AddView(TabState tab)
+    {
+        var host = new ExplorerHost(tab.InitialPath) { Visibility = Visibility.Hidden };
+        var navigation = new TabNavigation(tab);
+        var tabHeader = new RadioButton { GroupName = State.Id.ToString(), Padding = new Thickness(5), Margin = new Thickness(0, 0, 8, 0), MinWidth = 60, MaxWidth = 180, VerticalAlignment = VerticalAlignment.Center };
+        tabHeader.SetResourceReference(StyleProperty, "TabHeader");
+        tabHeader.Checked += (_, _) => { if (!disposed) { State.SelectTab(tab); Activated?.Invoke(); } };
+        AutomationProperties.SetAutomationId(tabHeader, label + ".tab." + tab.Id);
+        views.Add(tab, new(host, navigation, tabHeader));
+        tabs.Children.Add(tabHeader); browsers.Children.Add(host);
+        host.Navigated += path =>
+        {
+            if (disposed || !views.ContainsKey(tab)) return;
+            navigation.Complete(path);
+            if (focusAfterNavigation == tab && State.SelectedTab == tab && active && Window.GetWindow(this)?.IsActive == true)
+            { focusAfterNavigation = null; host.FocusView(); }
+        };
+        host.Error += message => { if (!disposed && views.ContainsKey(tab)) { if (focusAfterNavigation == tab) focusAfterNavigation = null; navigation.Fail(message); } };
+        host.NavigationStateChanged += CommandManager.InvalidateRequerySuggested;
+        host.Activated += () => { if (!disposed && State.SelectedTab == tab && host.ContainsNativeFocus) Activated?.Invoke(); };
+        tab.PropertyChanged += TabChanged;
+        UpdateTabHeader(tab);
+    }
+
+    private void PaneChanged(object? sender, PropertyChangedEventArgs e)
+    { if (e.PropertyName == nameof(PaneState.SelectedTab)) SelectView(); }
+
+    private void SelectView()
+    {
+        focusAfterNavigation = null;
+        if (views.Any(v => v.Key != State.SelectedTab && v.Value.Host.ContainsNativeFocus)) FocusAddress();
+        foreach (var (tab, view) in views)
+        {
+            view.Host.Visibility = tab == State.SelectedTab ? Visibility.Visible : Visibility.Hidden;
+            view.Header.IsChecked = tab == State.SelectedTab;
+        }
+        Address.SetBinding(TextBox.TextProperty, new Binding(nameof(TabState.AddressText)) { Source = State.SelectedTab, Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+        views[State.SelectedTab].Header.BringIntoView();
+        UpdateStatus();
+    }
+
+    private void UpdateTabHeader(TabState tab)
+    {
+        var path = tab.CurrentPath ?? tab.InitialPath;
+        var title = Path.GetFileName(path.TrimEnd('\\', '/'));
+        if (string.IsNullOrEmpty(title)) title = path;
+        var tabHeader = views[tab].Header;
+        tabHeader.Content = new TextBlock { Text = title, TextTrimming = TextTrimming.CharacterEllipsis };
+        tabHeader.ToolTip = path;
+        AutomationProperties.SetName(tabHeader, title);
+    }
+
+    private void TabChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not TabState tab) return;
+        if (e.PropertyName == nameof(TabState.CurrentPath)) UpdateTabHeader(tab);
+        if (tab == State.SelectedTab) UpdateStatus();
+    }
+    private void UpdateStatus()
+    {
+        var tab = State.SelectedTab;
         status.Text = tab.Error ?? tab.CurrentPath ?? "読み込み中…";
         status.ToolTip = status.Text;
         status.Foreground = tab.Error == null ? Brushes.DimGray : Brushes.Firebrick;
         CommandManager.InvalidateRequerySuggested();
     }
-    public void NavigateAddress() { if (Browser.Navigate(tab.AddressText)) Browser.FocusView(); }
-    public void FocusFiles() { tab.CancelAddressEdit(); Browser.FocusView(); }
+
+    public void AddTab(bool duplicate)
+    {
+        var path = duplicate ? State.SelectedTab.CurrentPath ?? State.SelectedTab.InitialPath : initialPath;
+        var tab = State.AddTab(path);
+        AddView(tab); State.SelectTab(tab);
+        focusAfterNavigation = tab;
+        FocusAddress();
+    }
+    public void CloseTab()
+    {
+        var tab = State.SelectedTab;
+        if (!State.CloseTab(tab)) return;
+        var view = views[tab]; views.Remove(tab);
+        tab.PropertyChanged -= TabChanged;
+        tabs.Children.Remove(view.Header); view.Host.Dispose(); browsers.Children.Remove(view.Host);
+        FocusFiles(); UpdateStatus();
+    }
+    public void CycleTab(int offset)
+    {
+        State.SelectTab(State.Tabs[(State.Tabs.IndexOf(State.SelectedTab) + offset + State.Tabs.Count) % State.Tabs.Count]);
+        FocusFiles();
+    }
+    public void NavigateAddress() => Navigate(State.SelectedTab.AddressText);
+    private void Navigate(string path)
+    {
+        if (!CanNavigate) return;
+        focusAfterNavigation = State.SelectedTab;
+        if (!Browser.Navigate(path)) focusAfterNavigation = null;
+    }
+    public void NavigateHistory(int offset)
+    {
+        if (!CanNavigate) return;
+        var path = views[State.SelectedTab].Navigation.BeginHistory(offset);
+        if (path != null) Navigate(path);
+    }
+    public string? ParentPath
+    {
+        get
+        {
+            try { return State.SelectedTab.CurrentPath is string path && Path.IsPathFullyQualified(path) ? Directory.GetParent(path)?.FullName : null; }
+            catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException) { return null; }
+        }
+    }
+    public void NavigateParent() { if (ParentPath is string path) Navigate(path); }
+    public void FocusFiles()
+    {
+        State.SelectedTab.CancelAddressEdit();
+        if (!Browser.FocusView()) FocusAddress();
+    }
     public void FocusAddress()
     {
-        // ネイティブ一覧への移動をWPFが認識していない場合にも、
-        // WPF側のHWNDへ戻してからキーボードフォーカスを設定する。
         Keyboard.ClearFocus();
         if (PresentationSource.FromVisual(this) is HwndSource source) Native.SetFocus(source.Handle);
-        Address.Focus();
-        Address.SelectAll();
+        Address.Focus(); Address.SelectAll();
     }
-    public void SetActive(bool active) => header.Background = active ? new SolidColorBrush(Color.FromRgb(223, 237, 252)) : Brushes.WhiteSmoke;
-    public void Dispose() { tab.PropertyChanged -= TabChanged; Browser.Dispose(); }
+    public void SetActive(bool active)
+    {
+        this.active = active;
+        if (!active) focusAfterNavigation = null;
+        header.Background = active ? new SolidColorBrush(Color.FromRgb(223, 237, 252)) : Brushes.WhiteSmoke;
+    }
+    public void Dispose()
+    {
+        disposed = true;
+        State.PropertyChanged -= PaneChanged;
+        foreach (var (tab, view) in views) { tab.PropertyChanged -= TabChanged; view.Host.Dispose(); }
+        views.Clear();
+    }
 }

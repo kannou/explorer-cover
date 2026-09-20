@@ -42,8 +42,15 @@ $left = $addresses[0].GetCurrentPattern([System.Windows.Automation.ValuePattern]
 $right = $addresses[1].GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value
 $testRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\artifacts\trial'))
 if ($left -ne (Join-Path $testRoot 'left') -or $right -ne (Join-Path $testRoot 'right')) { throw '検証専用フォルダー以外では実行できません。' }
-$name = 'キー操作-' + [Guid]::NewGuid().ToString('N').Substring(0,8) + '.txt'
+$name = '!key-' + ([DateTime]::MaxValue.Ticks - [DateTime]::UtcNow.Ticks).ToString('D19') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8) + '.txt'
 Set-Content -LiteralPath (Join-Path $left $name) -Value 'キー操作の検証'
+# 試行を重ねても新しい検証ファイルを一覧の先頭に表示する。
+$addresses[0].SetFocus()
+Start-Sleep -Milliseconds 250
+[TestInput]::Chord(0x1B)
+[TestInput]::Chord(0x74)
+Start-Sleep -Milliseconds 300
+[TestInput]::Chord(0x24)
 $deadline = [DateTime]::UtcNow.AddSeconds(10)
 do {
     $file = $window.FindAll($scope,$all) | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem -and $_.Current.Name -in @($name,[IO.Path]::GetFileNameWithoutExtension($name)) } | Select-Object -First 1

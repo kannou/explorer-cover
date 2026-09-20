@@ -132,5 +132,36 @@ Check("入力表記の正規化", () =>
     Throws<FormatException>(() => Key("Ctrl+Ctrl+K"));
     Throws<FormatException>(() => Key("Win+K"));
 });
+Check("履歴要求は成功まで現在地を変えず失敗後に再試行できる", () =>
+{
+    var tab = new TabState(@"C:\A");
+    var navigation = new TabNavigation(tab);
+    navigation.Complete(@"C:\A"); navigation.Complete(@"C:\B");
+    Equal(@"C:\A", navigation.BeginHistory(-1));
+    Equal(@"C:\B", tab.CurrentPath);
+    navigation.Fail("見つかりません");
+    Equal(1, tab.History.Index);
+    Equal(@"C:\A", navigation.BeginHistory(-1));
+    navigation.Complete(@"c:\a\");
+    Equal(0, tab.History.Index); Equal(2, tab.History.Entries.Count);
+    Equal<string?>(null, navigation.BeginHistory(-1));
+    Equal(@"C:\B", navigation.BeginHistory(1));
+    navigation.Complete(@"C:\redirect");
+    Equal(@"C:\redirect", tab.CurrentPath); Equal(false, tab.History.CanGoForward);
+});
+Check("タブと履歴のキーを変更でき編集キーは保護する", () =>
+{
+    var map = new ShortcutMap();
+    Equal(CommandIds.NextTab, map.Resolve(Key("Ctrl+Tab"), InputScope.Browser));
+    Equal(CommandIds.PreviousTab, map.Resolve(Key("Ctrl+Shift+Tab"), InputScope.Address));
+    Equal(CommandIds.Back, map.Resolve(Key("Alt+Left"), InputScope.Chrome));
+    Equal(CommandIds.Parent, map.Resolve(Key("Alt+Up"), InputScope.Browser));
+    map = ShortcutMap.FromJson(Json("{\"back\":[\"F8\"],\"nextTab\":[\"Ctrl+J\"]}"));
+    Equal<string?>(null, map.Resolve(Key("Alt+Left"), InputScope.Browser));
+    Equal(CommandIds.Back, map.Resolve(Key("F8"), InputScope.Browser));
+    Equal(CommandIds.NextTab, map.Resolve(Key("Ctrl+J"), InputScope.Address));
+    foreach (var gesture in new[] { "Alt+Tab", "Shift+Tab", "Left", "Ctrl+Left", "Shift+Left", "Delete", "Ctrl+Back" })
+        Throws<FormatException>(() => new ShortcutMap(new Dictionary<string, string[]> { [CommandIds.Back] = [gesture] }));
+});
 Console.WriteLine($"{count - failures.Count}/{count} passed");
 return failures.Count == 0 ? 0 : 1;

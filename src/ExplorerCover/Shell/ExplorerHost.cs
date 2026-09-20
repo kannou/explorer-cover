@@ -16,6 +16,8 @@ public sealed class ExplorerHost : HwndHost
     private bool initialized;
     private nint child;
     private string pendingPath;
+    public bool IsNavigating { get; private set; } = true;
+    public event Action? NavigationStateChanged;
     public string CurrentPath { get; private set; } = "";
     public event Action<string>? Navigated;
     public event Action<string>? Error;
@@ -43,14 +45,14 @@ public sealed class ExplorerHost : HwndHost
             browser.Initialize(child, ref rect, ref settings);
             DiagnosticLog.Write("ExplorerBrowser initialized");
             initialized = true;
-            browser.SetOptions(0x40 | 0x80); // 枠なし、Explorerの表示設定を書き換えない
+            browser.SetOptions(0x08 | 0x40 | 0x80); // 履歴はアプリ管理、枠なし、表示設定を永続化しない
             browser.Advise(site, out cookie);
             advised = true;
             // WPFのレイアウト処理中はCOMのメッセージポンプを回せない。
             // BrowseToIDListはレイアウトが完了してから呼び出す。
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
             {
-                if (browser != null) Navigate(pendingPath);
+                if (browser != null) { IsNavigating = false; Navigate(pendingPath); }
                 DiagnosticLog.Write("Initial navigation requested");
             });
         }
@@ -65,6 +67,7 @@ public sealed class ExplorerHost : HwndHost
     public bool Navigate(string path)
     {
         if (browser == null) { pendingPath = path; return false; }
+        if (IsNavigating) return false;
         nint pidl = 0;
         try
         {
@@ -95,7 +98,12 @@ public sealed class ExplorerHost : HwndHost
         {
             CurrentPath = Marshal.PtrToStringUni(name) ?? "";
             var path = CurrentPath;
-            Dispatcher.BeginInvoke(() => Navigated?.Invoke(path));
+            Dispatcher.BeginInvoke(() =>
+            {
+                IsNavigating = false;
+                Navigated?.Invoke(path);
+                NavigationStateChanged?.Invoke();
+            });
         }
         finally { Marshal.FreeCoTaskMem(name); }
     }
@@ -103,7 +111,14 @@ public sealed class ExplorerHost : HwndHost
     internal void ReportError(string message)
     {
         DiagnosticLog.Write(message);
-        Dispatcher.BeginInvoke(() => Error?.Invoke(message));
+        Dispatcher.BeginInvoke(() => { IsNavigating = false; Error?.Invoke(message); NavigationStateChanged?.Invoke(); });
+    }
+    internal int NavigationPending()
+    {
+        if (IsNavigating) return unchecked((int)0x80004004); // 移動中の追加要求を受け付けない
+        IsNavigating = true;
+        Dispatcher.BeginInvoke(() => NavigationStateChanged?.Invoke());
+        return 0;
     }
     internal void NotifyActivated() => Dispatcher.BeginInvoke(() => Activated?.Invoke());
     public bool ContainsNativeFocus => child != 0 && (Native.GetFocus() == child || Native.IsChild(child, Native.GetFocus()));
@@ -181,7 +196,7 @@ public sealed class ExplorerHost : HwndHost
 [ComVisible(true), ClassInterface(ClassInterfaceType.None)]
 public sealed class BrowserSite(ExplorerHost owner) : IExplorerBrowserEvents, IShellServiceProvider, ICommDlgBrowser
 {
-    public int OnNavigationPending(nint pidl) => 0;
+    public int OnNavigationPending(nint pidl) => owner.NavigationPending();
     public int OnViewCreated(nint view) => 0;
     public int OnNavigationComplete(nint pidl)
     {

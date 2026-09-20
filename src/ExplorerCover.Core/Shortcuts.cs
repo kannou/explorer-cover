@@ -85,7 +85,9 @@ public sealed class ShortcutMap
             throw new FormatException("EnterとEscapeの修飾キー付き割り当ては未対応です。");
         if (key == 0x20)
             throw new FormatException("Spaceは文字入力・IMEと競合するため、この段階では割り当てられません。");
-        if (key == 0x09 || key is 0x08 or 0x2D or 0x2E || key is >= 0x21 and <= 0x28)
+        var tabSwitch = key == 0x09 && mods is KeyModifiers.Control or (KeyModifiers.Control | KeyModifiers.Shift);
+        var navigation = key is 0x25 or 0x26 or 0x27 && mods == KeyModifiers.Alt;
+        if (!tabSwitch && !navigation && (key == 0x09 || key is 0x08 or 0x2D or 0x2E || key is >= 0x21 and <= 0x28))
             throw new FormatException("Tab・編集・カーソル移動キーは予約されています。");
         if (mods == KeyModifiers.Alt && key == 0x73 || mods == KeyModifiers.Control && key == 0x1B)
             throw new FormatException("OSの操作に予約されたキーです。");
