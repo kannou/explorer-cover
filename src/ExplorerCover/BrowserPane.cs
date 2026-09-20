@@ -27,7 +27,7 @@ public sealed class BrowserPane : Grid, IDisposable
     private readonly string initialPath;
     public ExplorerHost Browser => views[State.SelectedTab].Host;
     public PaneState State { get; }
-    public bool CanNavigate => !Browser.IsNavigating;
+    public bool CanNavigate => Browser.CanNavigate;
     public TextBox Address { get; } = new() { MinWidth = 40 };
     private readonly TextBlock status = new() { Text = "読み込み中…", TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(8, 5, 8, 5) };
     private readonly Border header;
@@ -93,6 +93,7 @@ public sealed class BrowserPane : Grid, IDisposable
     {
         var host = new ExplorerHost(tab.InitialPath) { Visibility = Visibility.Hidden };
         var navigation = new TabNavigation(tab);
+        host.NativeNavigationRequested += navigation.BeginNavigation;
         var tabHeader = new RadioButton { GroupName = State.Id.ToString(), Padding = new Thickness(5), Margin = new Thickness(0), MinWidth = 60, MaxWidth = 180, VerticalAlignment = VerticalAlignment.Center };
         tabHeader.SetResourceReference(StyleProperty, "TabHeader");
         tabHeader.Checked += (_, _) => { if (!disposed) { State.SelectTab(tab); Activated?.Invoke(); } };
@@ -107,7 +108,11 @@ public sealed class BrowserPane : Grid, IDisposable
             { focusAfterNavigation = null; host.FocusView(); }
         };
         host.Error += message => { if (!disposed && views.ContainsKey(tab)) { if (focusAfterNavigation == tab) focusAfterNavigation = null; navigation.Fail(message); } };
-        host.NavigationStateChanged += CommandManager.InvalidateRequerySuggested;
+        host.NavigationStateChanged += () =>
+        {
+            if (!disposed && State.SelectedTab == tab) UpdateStatus();
+            CommandManager.InvalidateRequerySuggested();
+        };
         host.Activated += () => { if (!disposed && State.SelectedTab == tab && host.ContainsNativeFocus) Activated?.Invoke(); };
         tab.PropertyChanged += TabChanged;
         UpdateTabHeader(tab);
@@ -152,9 +157,9 @@ public sealed class BrowserPane : Grid, IDisposable
     private void UpdateStatus()
     {
         var tab = State.SelectedTab;
-        status.Text = operationMessage ?? tab.Error ?? tab.CurrentPath ?? "読み込み中…";
+        status.Text = Browser.IsNavigating ? "移動中…" : operationMessage ?? tab.Error ?? tab.CurrentPath ?? "読み込み中…";
         status.ToolTip = status.Text;
-        status.Foreground = tab.Error == null && operationMessage == null ? Brushes.DimGray : Brushes.Firebrick;
+        status.Foreground = Browser.IsNavigating || (tab.Error == null && operationMessage == null) ? Brushes.DimGray : Brushes.Firebrick;
         CommandManager.InvalidateRequerySuggested();
     }
 
@@ -186,6 +191,11 @@ public sealed class BrowserPane : Grid, IDisposable
     public void Navigate(string path)
     {
         if (!CanNavigate) return;
+        views[State.SelectedTab].Navigation.BeginNavigation();
+        NavigateCore(path);
+    }
+    private void NavigateCore(string path)
+    {
         focusAfterNavigation = State.SelectedTab;
         if (!Browser.Navigate(path)) focusAfterNavigation = null;
     }
@@ -193,7 +203,7 @@ public sealed class BrowserPane : Grid, IDisposable
     {
         if (!CanNavigate) return;
         var path = views[State.SelectedTab].Navigation.BeginHistory(offset);
-        if (path != null) Navigate(path);
+        if (path != null) NavigateCore(path);
     }
     public string? ParentPath
     {

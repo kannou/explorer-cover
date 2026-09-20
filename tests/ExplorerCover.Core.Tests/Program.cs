@@ -53,6 +53,30 @@ Check("履歴への不正な確定は状態を変更しない", () =>
     h.Commit(@"c:\b\");
     Equal(2, h.Entries.Count);
 });
+Check("WSLの大小文字は履歴とブックマークで区別し、サーバー別名は同一視する", () =>
+{
+    var upper = @"\\wsl.localhost\Ubuntu-24.04\home\user\Case";
+    var lower = @"\\wsl.localhost\Ubuntu-24.04\home\user\case";
+    Equal(false, NavigationHistory.SameLocation(upper, lower));
+    Equal(true, NavigationHistory.SameLocation(upper, @"\\WSL$\ubuntu-24.04\home\user\Case\"));
+    Equal(true, NavigationHistory.SameLocation(upper, @"\\?\UNC\wsl.localhost\Ubuntu-24.04\home\user\Case"));
+    Equal(false, NavigationHistory.SameLocation(upper, @"\\other\Ubuntu-24.04\home\user\Case"));
+    var tab = new TabState(upper); var navigation = new TabNavigation(tab);
+    navigation.Complete(upper); navigation.Complete(lower);
+    Equal(2, tab.History.Entries.Count);
+    navigation.BeginHistory(-1); navigation.Complete(upper.Replace("wsl.localhost", "wsl$"));
+    Equal(0, tab.History.Index); Equal(true, tab.History.CanGoForward);
+    var sidebar = new SidebarState(); sidebar.Add("Case", upper); sidebar.Add("case", lower);
+    sidebar.Add("alias", upper.Replace("wsl.localhost", "wsl$"));
+    Equal(2, sidebar.Bookmarks.Count);
+});
+Check("履歴移動の確認中に通常移動へ変更した場合は新しい履歴になる", () =>
+{
+    var tab = new TabState(@"C:\a"); var navigation = new TabNavigation(tab);
+    navigation.Complete(@"C:\a"); navigation.Complete(@"C:\b");
+    navigation.BeginHistory(-1); navigation.BeginNavigation(); navigation.Complete(@"C:\a");
+    Equal(3, tab.History.Entries.Count); Equal(2, tab.History.Index);
+});
 Check("タブとペインの状態は独立し最後のタブを閉じない", () =>
 {
     var state = new WorkspaceState(@"C:\left", @"C:\right");

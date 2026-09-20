@@ -16,15 +16,26 @@ public sealed class ExplorerHost : HwndHost
     private bool initialized;
     private nint child;
     private string pendingPath;
+    private CancellationTokenSource? preparation;
+    private long requestVersion;
+    private bool shellNavigating;
+    private bool submitting;
+    private readonly Func<string, CancellationToken, Task<byte[]>> resolvePath;
+    private readonly TimeSpan preparationTimeout;
+    public bool CanNavigate => browser != null && !shellNavigating;
     public bool IsNavigating { get; private set; } = true;
     public event Action? NavigationStateChanged;
     public string CurrentPath { get; private set; } = "";
     public event Action<string>? Navigated;
     public event Action<string>? Error;
     public event Action? Activated;
+    public event Action? NativeNavigationRequested;
 
-    public ExplorerHost(string initialPath)
+    public ExplorerHost(string initialPath) : this(initialPath, ShellPathResolver.ResolveAsync, TimeSpan.FromSeconds(15)) { }
+
+    internal ExplorerHost(string initialPath, Func<string, CancellationToken, Task<byte[]>> resolvePath, TimeSpan preparationTimeout)
     {
+        this.resolvePath = resolvePath; this.preparationTimeout = preparationTimeout;
         pendingPath = initialPath;
         Focusable = true;
     }
@@ -67,16 +78,19 @@ public sealed class ExplorerHost : HwndHost
     public bool Navigate(string path)
     {
         if (browser == null) { pendingPath = path; return false; }
-        if (IsNavigating) return false;
-        nint pidl = 0;
+        if (!CanNavigate) return false;
+        preparation?.Cancel();
+        var version = ++requestVersion;
         try
         {
             path = Environment.ExpandEnvironmentVariables(path.Trim().Trim('"'));
             if (string.IsNullOrWhiteSpace(path)) throw new IOException("フォルダーのパスを入力してください。");
             path = Path.GetFullPath(path, string.IsNullOrEmpty(CurrentPath) ? Environment.CurrentDirectory : CurrentPath);
-            if (!Directory.Exists(path)) throw new IOException("フォルダーが存在しないか、アクセスできません。");
-            Marshal.ThrowExceptionForHR(Native.SHParseDisplayName(path, 0, out pidl, 0, out _));
-            browser.BrowseToIDList(pidl, 0);
+            var cancellation = new CancellationTokenSource(preparationTimeout);
+            preparation = cancellation;
+            IsNavigating = true;
+            NavigationStateChanged?.Invoke();
+            _ = PrepareAndNavigateAsync(path, version, cancellation);
             return true;
         }
         catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
@@ -84,7 +98,35 @@ public sealed class ExplorerHost : HwndHost
             ReportError($"移動できません: {ex.Message}");
             return false;
         }
-        finally { if (pidl != 0) Marshal.FreeCoTaskMem(pidl); }
+    }
+
+    private async Task PrepareAndNavigateAsync(string path, long version, CancellationTokenSource cancellation)
+    {
+        nint pidl = 0;
+        try
+        {
+            var bytes = await resolvePath(path, cancellation.Token).WaitAsync(cancellation.Token);
+            if (version != requestVersion || browser == null) return;
+            pidl = Marshal.AllocCoTaskMem(bytes.Length); Marshal.Copy(bytes, 0, pidl, bytes.Length);
+            submitting = true;
+            shellNavigating = true;
+            // ビューを所有するUIのSTA上でだけBrowseToIDListを呼ぶ。
+            browser.BrowseToIDList(pidl, 0);
+        }
+        catch (OperationCanceledException)
+        {
+            if (version == requestVersion && browser != null) ReportError("移動できません: 移動先の確認がタイムアウトしました。WSLの起動状態やパスを確認して再試行してください。");
+        }
+        catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException)
+        {
+            if (version == requestVersion && browser != null) ReportError($"移動できません: {ex.Message}");
+        }
+        finally
+        {
+            if (pidl != 0) Marshal.FreeCoTaskMem(pidl);
+            if (ReferenceEquals(preparation, cancellation)) preparation = null;
+            cancellation.Dispose();
+        }
     }
 
     internal void NavigationComplete(nint pidl)
@@ -98,8 +140,12 @@ public sealed class ExplorerHost : HwndHost
         {
             CurrentPath = Marshal.PtrToStringUni(name) ?? "";
             var path = CurrentPath;
+            var version = requestVersion;
             Dispatcher.BeginInvoke(() =>
             {
+                if (version != requestVersion || browser == null) return;
+                shellNavigating = false;
+                submitting = false;
                 IsNavigating = false;
                 Navigated?.Invoke(path);
                 NavigationStateChanged?.Invoke();
@@ -111,11 +157,15 @@ public sealed class ExplorerHost : HwndHost
     internal void ReportError(string message)
     {
         DiagnosticLog.Write(message);
-        Dispatcher.BeginInvoke(() => { IsNavigating = false; Error?.Invoke(message); NavigationStateChanged?.Invoke(); });
+        var version = requestVersion;
+        Dispatcher.BeginInvoke(() => { if (version != requestVersion) return; submitting = false; shellNavigating = false; IsNavigating = false; Error?.Invoke(message); NavigationStateChanged?.Invoke(); });
     }
     internal int NavigationPending()
     {
-        if (IsNavigating) return unchecked((int)0x80004004); // 移動中の追加要求を受け付けない
+        if (shellNavigating && !submitting) return unchecked((int)0x80004004); // シェルに渡した移動は直列化する。
+        if (!submitting) { preparation?.Cancel(); ++requestVersion; NativeNavigationRequested?.Invoke(); }
+        submitting = false;
+        shellNavigating = true;
         IsNavigating = true;
         Dispatcher.BeginInvoke(() => NavigationStateChanged?.Invoke());
         return 0;
@@ -212,6 +262,7 @@ public sealed class ExplorerHost : HwndHost
 
     private void ReleaseBrowser()
     {
+        ++requestVersion; preparation?.Cancel();
         if (browser == null) return;
         DiagnosticLog.Write("Destroying ExplorerBrowser");
         // 1つの解除が失敗しても残りのネイティブ資源を解放する。

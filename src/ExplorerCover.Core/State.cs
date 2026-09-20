@@ -45,8 +45,24 @@ public sealed class NavigationHistory
         Index = entries.Count - 1;
     }
 
-    public static bool SameLocation(string a, string b) =>
-        string.Equals(a.TrimEnd('\\', '/'), b.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+    public static bool SameLocation(string a, string b)
+    {
+        a = a.Replace('/', '\\').TrimEnd('\\'); b = b.Replace('/', '\\').TrimEnd('\\');
+        var left = WslParts(a); var right = WslParts(b);
+        if (left != null || right != null)
+            return left != null && right != null
+                && string.Equals(left.Value.Distro, right.Value.Distro, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(left.Value.Path, right.Value.Path, StringComparison.Ordinal);
+        return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    }
+    private static (string Distro, string Path)? WslParts(string path)
+    {
+        if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)) path = @"\\" + path[8..];
+        if (!path.StartsWith(@"\\")) return null;
+        var parts = path[2..].Split('\\', 3);
+        if (parts.Length < 2 || !(parts[0].Equals("wsl.localhost", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("wsl$", StringComparison.OrdinalIgnoreCase))) return null;
+        return (parts[1], parts.Length == 3 ? parts[2] : "");
+    }
 }
 
 public sealed class TabState : ObservableState
@@ -77,6 +93,7 @@ public sealed class TabState : ObservableState
 public sealed class TabNavigation(TabState tab)
 {
     private int? pendingIndex;
+    public void BeginNavigation() => pendingIndex = null;
     public string? BeginHistory(int offset)
     {
         var index = tab.History.Index + offset;
