@@ -4,7 +4,7 @@
 
 `run.cmd`で通常起動すると前回の作業状態を復元する。変更は約1秒ごとにまとめ、内容が変わった場合だけ保存する。終了時にも最後の状態を保存する。
 
-保存先は`%LOCALAPPDATA%\explorer_cover\workspace.json`。ショートカット・マウス・QuickLookの設定とは別ファイルで、形式に`version: 1`を付ける。
+保存先は`%LOCALAPPDATA%\explorer-cover\workspace.json`。ショートカット・マウス・QuickLookの設定とは別ファイルで、形式に`version: 1`を付ける。
 
 保存する項目:
 

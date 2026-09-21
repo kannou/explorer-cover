@@ -10,7 +10,7 @@ internal static class ShortcutSettings
     {
         var service = new ShortcutService();
         var customPath = Environment.GetEnvironmentVariable("EXPLORER_COVER_SHORTCUTS");
-        var path = customPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "explorer_cover", "shortcuts.json");
+        var path = customPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "explorer-cover", "shortcuts.json");
         try
         {
             if (customPath != null || File.Exists(path)) service.ApplyJson(File.ReadAllText(path));

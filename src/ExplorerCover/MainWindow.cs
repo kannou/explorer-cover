@@ -44,12 +44,17 @@ public sealed class MainWindow : Window
         previewSelectionTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
         previewSelectionTimer.Tick += PreviewSelectionChanged;
         previewSelectionTimer.Start();
-        Title = "explorer_cover — 2ペイン試作";
+        Title = ProductInfo.Name;
         Width = Math.Min(1400, SystemParameters.WorkArea.Width); Height = 740; MinWidth = 900; MinHeight = 380;
         FontFamily = new FontFamily("Yu Gothic UI"); FontSize = 13;
         var root = new DockPanel();
         help = new TextBlock { Margin = new Thickness(10, 7, 10, 7), Foreground = Brushes.DimGray, TextWrapping = TextWrapping.Wrap };
         var footer = new DockPanel(); DockPanel.SetDock(footer, Dock.Bottom); root.Children.Add(footer);
+        var aboutButton = new Button { Content = "ⓘ", ToolTip = "バージョン情報", Width = 34, Margin = new Thickness(4), FontSize = 18, Padding = new Thickness(0) };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(aboutButton, "OpenAbout");
+        System.Windows.Automation.AutomationProperties.SetName(aboutButton, "バージョン情報");
+        aboutButton.Click += (_, _) => MessageBox.Show(this, $"{ProductInfo.Name}\nバージョン {ProductInfo.Version}\nファイル版 {ProductInfo.FileVersion}", "バージョン情報", MessageBoxButton.OK, MessageBoxImage.Information);
+        DockPanel.SetDock(aboutButton, Dock.Left); footer.Children.Add(aboutButton);
         var settingsButton = new Button { Content = "⚙", ToolTip = "設定", Width = 34, Margin = new Thickness(4), FontSize = 18, Padding = new Thickness(0) };
         System.Windows.Automation.AutomationProperties.SetAutomationId(settingsButton, "OpenSettings");
         System.Windows.Automation.AutomationProperties.SetName(settingsButton, "設定");

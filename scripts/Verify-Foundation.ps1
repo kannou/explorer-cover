@@ -48,12 +48,12 @@ try {
   Set-Content -LiteralPath $settings -Value $json -Encoding utf8
   $env:EXPLORER_COVER_SHORTCUTS = $settings
   $env:EXPLORER_COVER_LOG = Join-Path $root "artifacts\foundation-$profile.log"
-  $dll = Join-Path $root 'src\ExplorerCover\bin\Release\net10.0-windows\explorer_cover.dll'
+  $dll = Join-Path $root 'src\ExplorerCover\bin\Release\net10.0-windows\explorer-cover.dll'
   $app = Start-Process -FilePath (Join-Path $root '.tools\dotnet\dotnet.exe') -ArgumentList @(('"'+$dll+'"'),('"'+(Join-Path $trial 'left')+'"'),('"'+(Join-Path $trial 'right')+'"')) -WindowStyle Hidden -PassThru
   $script:window = $null
   try {
    Wait-Until {
-    $script:window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -like 'explorer_cover*' } | Select-Object -First 1
+    $script:window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -like 'explorer-cover*' } | Select-Object -First 1
     $null -ne $script:window -and @((Elements) | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::List }).Count -eq 2
    }
    [FoundationInput]::Target = [uint32]$app.Id

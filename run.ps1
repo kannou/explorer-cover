@@ -9,5 +9,5 @@ $paths = @()
 if ($PSBoundParameters.ContainsKey("LeftPath") -or $PSBoundParameters.ContainsKey("RightPath")) {
     $paths = @($(if ($LeftPath) { $LeftPath } else { $env:USERPROFILE }), $(if ($RightPath) { $RightPath } else { $env:USERPROFILE }))
 }
-& $sdk run --project (Join-Path $PSScriptRoot 'src\ExplorerCover\ExplorerCover.csproj') --configuration Release -- @paths
+& $sdk run --project (Join-Path $PSScriptRoot 'src\ExplorerCover\explorer-cover.csproj') --configuration Release -- @paths
 exit $LASTEXITCODE

@@ -1,6 +1,8 @@
-# explorer_cover
+# explorer-cover
 
-C#＋WPFで外枠を作り、Windows Shellの`IExplorerBrowser`を左右に埋め込んだファイラーの試作です。プロジェクト名の`explorer_cover`は、Explorerの閲覧・操作機能を包み、配置と状態管理を自分好みにする外枠を表します。
+現在のバージョン: `0.1.0`（ファイル版 `0.1.0.0`）。開発中の初回実用版で、設定・作業状態の保存形式は今後変更される可能性があります。
+
+C#＋WPFで外枠を作り、Windows Shellの`IExplorerBrowser`を左右に埋め込んだファイラーの試作です。プロジェクト名の`explorer-cover`は、Explorerの閲覧・操作機能を包み、配置と状態管理を自分好みにする外枠を表します。
 
 各ペインのタブと、タブごとの戻る・進む・親へ移動（段階5b）を実装済みです。ボタンとキーは共通コマンドを使い、設定画面でショートカットを変更できます。次はこの状態で試用し、改善点を確認します。
 
@@ -20,7 +22,7 @@ C#＋WPFで外枠を作り、Windows Shellの`IExplorerBrowser`を左右に埋�
 
 ## 日常利用版の起動・更新
 
-`dist\explorer_cover\explorer_cover.exe`をダブルクリックすると、ビルドせずに起動できます。.NETを同梱しているため、起動時のSDKや環境変数の設定は不要です。exeへのショートカットからも利用できます。
+`dist\explorer-cover\explorer-cover.exe`をダブルクリックすると、ビルドせずに起動できます。.NETを同梱しているため、起動時のSDKや環境変数の設定は不要です。exeへのショートカットからも利用できます。
 
 作成・更新はアプリを閉じて`publish.cmd`を実行します。成功後に通常版を切り替え、前の版は`dist\previous-日時-ID`へ退避します。設定やタブの保存先は従来と共通です。[起動・更新・前の版への戻し方](docs/RUNNING.md)を参照してください。
 
@@ -88,7 +90,7 @@ PowerShellから左右の場所を指定する場合:
 
 左下の⚙から設定画面を開けます。キーは`Ctrl+T`形式で入力し、複数なら` / `で区切ります。空欄で解除できます。タブを閉じるマウスボタン、QuickLookの起動先も変更できます。「保存」で即時反映し、再起動後も維持します。「初期値に戻す」も保存するまで反映しません。
 
-保存先は`%LOCALAPPDATA%\explorer_cover\input.json`です。作業状態とは別に保存し、置換前の設定は`.bak`に残します。保存に失敗した場合は設定を適用せず、画面にエラーを表示します。[設定の仕様・検証](docs/SETTINGS.md)を参照してください。
+保存先は`%LOCALAPPDATA%\explorer-cover\input.json`です。作業状態とは別に保存し、置換前の設定は`.bak`に残します。保存に失敗した場合は設定を適用せず、画面にエラーを表示します。[設定の仕様・検証](docs/SETTINGS.md)を参照してください。
 
 以下のJSONは従来形式です。`input.json`がない場合に`shortcuts.json`・`mouse.json`・`quicklook.json`を読み込み、設定画面で保存するとまとめて`input.json`へ移行します。その後は`input.json`を優先します。
 
@@ -146,7 +148,7 @@ Remove-Item Env:\EXPLORER_COVER_SHORTCUTS
 
 ## QuickLookの設定
 
-起動済みのQuickLookには設定なしで接続します。未起動の場合はStore版、または標準的なインストール先のQuickLookを検出して起動します。検出できない場合は`%LOCALAPPDATA%\explorer_cover\quicklook.json`でQuickLook.exeの絶対パスを指定できます。
+起動済みのQuickLookには設定なしで接続します。未起動の場合はStore版、または標準的なインストール先のQuickLookを検出して起動します。検出できない場合は`%LOCALAPPDATA%\explorer-cover\quicklook.json`でQuickLook.exeの絶対パスを指定できます。
 
 ```json
 { "version": 1, "executablePath": "C:\\Tools\\QuickLook\\QuickLook.exe" }
@@ -158,7 +160,7 @@ Remove-Item Env:\EXPLORER_COVER_SHORTCUTS
 
 ## タブを閉じるマウスボタンの設定
 
-タブを閉じるマウスボタンは、起動時に`%LOCALAPPDATA%\explorer_cover\mouse.json`から読み込みます。指定できる値は`middle`（初期値）、`right`、`xButton1`、`xButton2`、`none`（見出しのクリックによる終了を無効化）です。左ボタンは選択・ドラッグに使います。
+タブを閉じるマウスボタンは、起動時に`%LOCALAPPDATA%\explorer-cover\mouse.json`から読み込みます。指定できる値は`middle`（初期値）、`right`、`xButton1`、`xButton2`、`none`（見出しのクリックによる終了を無効化）です。左ボタンは選択・ドラッグに使います。
 
 ```json
 { "version": 1, "closeTabButton": "right" }
@@ -178,7 +180,7 @@ Remove-Item Env:\EXPLORER_COVER_MOUSE
 ## 現時点の制限
 
 - 通常起動ではタブ・場所・選択中タブ・各幅・ブックマークを保存・復元します。ウィンドウの位置・サイズ・最大化状態も復元します。戻る／進むの履歴、一覧内の選択とスクロールは起動をまたいで復元しません。
-- 保存先は`%LOCALAPPDATA%\explorer_cover\workspace.json`です。一時セッションでは保存しません。
+- 保存先は`%LOCALAPPDATA%\explorer-cover\workspace.json`です。一時セッションでは保存しません。
 - タブごとにシェルビューを保持するため、開く数に応じてメモリ使用量が増えます。左右ペイン間のタブ移動・別ウィンドウへの切り離し・閉じたタブの復元は未実装です。
 - パス欄はファイルシステムのフォルダーを対象としています。仮想フォルダーの文字列表現を直接入力する機能はありません。
 - 右クリックは今回の検証環境では従来型のシェルメニューです。Windows 11の新メニューと同一ではありません。
@@ -190,7 +192,7 @@ Remove-Item Env:\EXPLORER_COVER_MOUSE
 
 ```powershell
 $env:DOTNET_CLI_HOME = "$PWD\.tools\cli"
-.\.tools\dotnet\dotnet.exe build .\src\ExplorerCover\ExplorerCover.csproj -c Release
+.\.tools\dotnet\dotnet.exe build .\src\ExplorerCover\explorer-cover.csproj -c Release
 .\.tools\dotnet\dotnet.exe run --project .\tests\ExplorerCover.Core.Tests -c Release
 .\.tools\dotnet\dotnet.exe run --project .\tests\ExplorerCover.QuickLook.Tests -c Release
 ```

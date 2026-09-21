@@ -8,7 +8,7 @@
 
 `quickView`は共通コマンドに登録し、`shortcuts.json`で変更・解除できる。対象は一覧のみ。パス入力、シェルの名前変更、IME変換中、外枠のボタン上ではプレビューキーとして処理しない。Spaceは`quickView`にのみ割り当て可能で、Ctrl+Spaceなどは入力との競合を避けるため禁止する。
 
-起動設定は`%LOCALAPPDATA%\explorer_cover\quicklook.json`、または環境変数`EXPLORER_COVER_QUICKLOOK`で指定したJSONから読む。[サンプル](../config/quicklook.example.json)を用意した。
+起動設定は`%LOCALAPPDATA%\explorer-cover\quicklook.json`、または環境変数`EXPLORER_COVER_QUICKLOOK`で指定したJSONから読む。[サンプル](../config/quicklook.example.json)を用意した。
 
 ```json
 { "version": 1, "executablePath": null }

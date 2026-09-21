@@ -9,7 +9,7 @@ internal static class QuickLookSettingsFile
     public static (QuickLookSettings Settings, string? Warning) Load()
     {
         var custom = Environment.GetEnvironmentVariable("EXPLORER_COVER_QUICKLOOK");
-        var path = custom ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "explorer_cover", "quicklook.json");
+        var path = custom ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "explorer-cover", "quicklook.json");
         try { return (custom != null || File.Exists(path) ? QuickLookSettings.FromJson(File.ReadAllText(path)) : new(), null); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or FormatException or ArgumentException or NotSupportedException)
         {

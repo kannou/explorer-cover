@@ -70,12 +70,12 @@ Set-Content $settings $json -Encoding utf8
 $env:EXPLORER_COVER_SHORTCUTS=$settings
 $log = Join-Path $trial 'app.log'
 $env:EXPLORER_COVER_LOG=$log
-$dll=Join-Path $root 'src\ExplorerCover\bin\Release\net10.0-windows\explorer_cover.dll'
+$dll=Join-Path $root 'src\ExplorerCover\bin\Release\net10.0-windows\explorer-cover.dll'
 $app=Start-Process (Join-Path $root '.tools\dotnet\dotnet.exe') -ArgumentList @(('"'+$dll+'"'),('"'+$left+'"'),('"'+$right+'"')) -WindowStyle Hidden -PassThru
 $script:window=$null
 try {
  Wait-Until {
-  $script:window=[System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -like 'explorer_cover*' } | Select-Object -First 1
+  $script:window=[System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -like 'explorer-cover*' } | Select-Object -First 1
   $null -ne $script:window
  }
  At '左' $left; At '右' $right

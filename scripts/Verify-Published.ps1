@@ -2,7 +2,7 @@
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 $root = Split-Path -Parent $PSScriptRoot
-$exe = Join-Path $root 'dist\explorer_cover\explorer_cover.exe'
+$exe = Join-Path $root 'dist\explorer-cover\explorer-cover.exe'
 $trial = Join-Path $root ('artifacts\published-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $trial | Out-Null
 $names = @('EXPLORER_COVER_STATE','EXPLORER_COVER_SETTINGS','EXPLORER_COVER_LOG','DOTNET_ROOT','DOTNET_ROOT_X64')
@@ -23,7 +23,7 @@ function Start-App {
     Wait-Until {
         if ($app.HasExited) { throw "通常版の起動失敗: $($app.ExitCode)" }
         $script:window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition) |
-            Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -like 'explorer_cover*' } | Select-Object -First 1
+            Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -like 'explorer-cover*' } | Select-Object -First 1
         $null -ne $script:window
     }
 }
@@ -46,7 +46,7 @@ try {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'publish.ps1') *> (Join-Path $trial 'update.log')
     if ($LASTEXITCODE -ne 0) { throw '終了後の更新に失敗しました。update.logを確認してください。' }
     $backup = Get-ChildItem -LiteralPath (Join-Path $root 'dist') -Directory -Filter 'previous-*' | Sort-Object Name -Descending | Select-Object -First 1
-    if (!$backup -or (Get-FileHash -LiteralPath (Join-Path $backup.FullName 'explorer_cover.exe')).Hash -ne $before) { throw '前の版が退避されていません。' }
+    if (!$backup -or (Get-FileHash -LiteralPath (Join-Path $backup.FullName 'explorer-cover.exe')).Hash -ne $before) { throw '前の版が退避されていません。' }
     Start-App; Close-App
     'PASS: 終了後の更新・前の版の退避・更新版の再起動と状態保存'
 } finally {

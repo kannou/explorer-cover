@@ -10,7 +10,7 @@ internal static class InputSettingsFile
         ?? (Environment.GetEnvironmentVariable("EXPLORER_COVER_SHORTCUTS") is string keys ? keys + ".input.json" :
             Environment.GetEnvironmentVariable("EXPLORER_COVER_MOUSE") is string mouse ? mouse + ".input.json" :
             Environment.GetEnvironmentVariable("EXPLORER_COVER_QUICKLOOK") is string preview ? preview + ".input.json" :
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "explorer_cover", "input.json"));
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "explorer-cover", "input.json"));
     public static (InputSettings? Settings, string? Warning) Load()
     {
         try { return (File.Exists(PathName) ? InputSettings.FromJson(File.ReadAllText(PathName)) : null, null); }

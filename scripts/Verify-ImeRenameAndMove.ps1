@@ -14,7 +14,7 @@ public static class FinalInput {
 '@
 $all = [System.Windows.Automation.Condition]::TrueCondition
 $scope = [System.Windows.Automation.TreeScope]::Descendants
-$window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $ProcessId -and $_.Current.Name -like 'explorer_cover*' } | Select-Object -First 1
+$window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $ProcessId -and $_.Current.Name -like 'explorer-cover*' } | Select-Object -First 1
 [FinalInput]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle) | Out-Null
 $addresses = @($window.FindAll($scope,$all) | Where-Object { $_.Current.ClassName -eq 'TextBox' })
 $left = $addresses[0].GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value

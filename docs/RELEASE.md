@@ -2,9 +2,11 @@
 
 実施日: 2026-09-21。
 
+現在のバージョン: `0.1.0`（ファイル版 `0.1.0.0`）。バージョンは`src/ExplorerCover/explorer-cover.csproj`で明示している。
+
 ## 実装
 
-- `publish.cmd`／`publish.ps1`でWindows x64向け自己完結型のRelease版を作成する。通常起動は`dist\explorer_cover\explorer_cover.exe`を使用する。
+- `publish.cmd`／`publish.ps1`でWindows x64向け自己完結型のRelease版を作成する。通常起動は`dist\explorer-cover\explorer-cover.exe`を使用する。
 - ランタイム取得時のみNuGet.orgを明示する。通常の開発ビルド用のNuGet設定は変更しない。
 - 発行は別フォルダーで完了させ、成功後に固定の通常版フォルダーへ切り替える。前の版は日時付きで退避する。切り替え失敗時は可能な場合に旧フォルダーを戻す。
 - 起動中の通常版を検出した場合は更新を拒否する。アプリの強制終了や保存データの操作は行わない。
@@ -18,7 +20,7 @@
 - 起動中は発行コマンドが失敗し、既存exeのハッシュは変わらない。
 - 終了後の再発行が成功し、前の版のexeが同じハッシュで退避される。
 - 更新後のexeが再起動し、終了時に作業状態を保存する。
-- 記録: `artifacts/published-53a36f96ab894debb6094163feab6b7e`。
+- 記録: `artifacts/published-6259b8d1705b48d2847c9ed7d199f07d`。
 
 ## 次の確認
 

@@ -34,8 +34,8 @@ QuickLook連携の実装、Coreテスト18件、通信テスト5件と実画面�
 
 ## 改名後の確認（2026-09-20）
 
-- `ExplorerCover.csproj`をReleaseビルドし、警告0・エラー0を確認した。
-- `explorer_cover.dll`から起動し、タイトル`explorer_cover — 2ペイン試作`と左右2つのシェル一覧を確認した。
+- `explorer-cover.csproj`をReleaseビルドし、警告0・エラー0を確認した。
+- `explorer-cover.dll`から起動し、タイトル`explorer-cover`と左右2つのシェル一覧を確認した。
 - 検証ウィンドウを通常終了し、終了コード0を確認した。ログ: `artifacts/rename-smoke.log`。
 - 起動・検証スクリプトのパスとタイトル条件、診断ログ環境変数を新名称へ更新した。現在開いているワークスペースのルートフォルダー名は`explorer_alt`のままとし、ソースは`src/ExplorerCover`へ移した。
 

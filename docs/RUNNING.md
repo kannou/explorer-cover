@@ -1,18 +1,20 @@
 # 日常利用と更新
 
+現在のバージョン: `0.1.0`（ファイル版 `0.1.0.0`）。
+
 ## 起動
 
-通常版は`dist\explorer_cover\explorer_cover.exe`をダブルクリックして起動する。毎回のビルド、PowerShell、.NET SDKの起動は不要。Windows x64向けの.NETランタイムを同梱している。
+通常版は`dist\explorer-cover\explorer-cover.exe`をダブルクリックして起動する。毎回のビルド、PowerShell、.NET SDKの起動は不要。Windows x64向けの.NETランタイムを同梱している。
 
-exeへのショートカットを作成して利用できる。exe単体を移動せず、必要な場合は`explorer_cover`フォルダー全体をコピーする。QuickLookは別途インストール済みのものを使用する。
+exeへのショートカットを作成して利用できる。exe単体を移動せず、必要な場合は`explorer-cover`フォルダー全体をコピーする。QuickLookは別途インストール済みのものを使用する。
 
-作業状態・設定は従来と同じ`%LOCALAPPDATA%\explorer_cover`へ保存する。通常版と開発版で共有するため、同時起動を避ける。保存先指定の環境変数も引き続き使用できる。
+作業状態・設定は従来と同じ`%LOCALAPPDATA%\explorer-cover`へ保存する。通常版と開発版で共有するため、同時起動を避ける。保存先指定の環境変数も引き続き使用できる。
 
 ## 作成・更新
 
-1. 通常版のexplorer_coverを閉じる。
+1. 通常版のexplorer-coverを閉じる。
 2. ソースコードのフォルダーで`publish.cmd`を実行する。
-3. 「発行完了」と表示されたら、同じ`dist\explorer_cover\explorer_cover.exe`を開く。
+3. 「発行完了」と表示されたら、同じ`dist\explorer-cover\explorer-cover.exe`を開く。
 
 発行時だけWindows用.NET 10 SDKが必要。プロジェクト内の`.tools\dotnet`を優先し、なければPATHのdotnetを使う。初回はランタイムパッケージを取得するためネット接続が必要。
 

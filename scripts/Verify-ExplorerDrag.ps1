@@ -15,7 +15,7 @@ public static class DragInput {
 '@
 $scope = [System.Windows.Automation.TreeScope]::Descendants
 $all = [System.Windows.Automation.Condition]::TrueCondition
-$window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $ProcessId -and $_.Current.Name -like 'explorer_cover*' } | Select-Object -First 1
+$window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $ProcessId -and $_.Current.Name -like 'explorer-cover*' } | Select-Object -First 1
 $testRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\artifacts\trial'))
 $shell = New-Object -ComObject Shell.Application
 $explorerCom = $shell.Windows() | Where-Object { $_.LocationURL -eq ([Uri](Join-Path $testRoot 'explorer')).AbsoluteUri } | Select-Object -First 1

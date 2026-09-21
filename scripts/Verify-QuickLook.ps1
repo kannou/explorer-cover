@@ -75,7 +75,7 @@ $json=if($Missing){ @{version=1;executablePath=(Join-Path $trial 'missing.exe')}
 Set-Content $quickSettings $json -Encoding utf8
 $env:EXPLORER_COVER_QUICKLOOK=$quickSettings
 $log=Join-Path $trial 'app.log'; $env:EXPLORER_COVER_LOG=$log
-$dll=Join-Path $root 'src\ExplorerCover\bin\Release\net10.0-windows\explorer_cover.dll'
+$dll=Join-Path $root 'src\ExplorerCover\bin\Release\net10.0-windows\explorer-cover.dll'
 $app=Start-Process (Join-Path $root '.tools\dotnet\dotnet.exe') -ArgumentList @(('"'+$dll+'"'),('"'+$left+'"'),('"'+$right+'"')) -WindowStyle Hidden -PassThru
 $script:window=$null
 $previewKey=if($CustomKeys){0x77}else{0x20}
@@ -87,7 +87,7 @@ function RequestCount { @(Select-String -LiteralPath $log -Pattern 'QuickLook re
 function SampleItem { (Elements) | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem -and $_.Current.Name -eq '日本語 quick view.txt' } | Select-Object -First 1 }
 try {
  Wait-Until {
-  $script:window=[System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -like 'explorer_cover*' } | Select-Object -First 1
+  $script:window=[System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object { $_.Current.ProcessId -eq $app.Id -and $_.Current.Name -like 'explorer-cover*' } | Select-Object -First 1
   $null -ne $script:window
  }
  At '左' $left; At '右' $right

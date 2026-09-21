@@ -33,7 +33,7 @@ public static class TestInput {
 '@
 $scope = [System.Windows.Automation.TreeScope]::Descendants
 $all = [System.Windows.Automation.Condition]::TrueCondition
-$window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $all) | Where-Object { $_.Current.ProcessId -eq $ProcessId -and $_.Current.Name -like 'explorer_cover*' } | Select-Object -First 1
+$window = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $all) | Where-Object { $_.Current.ProcessId -eq $ProcessId -and $_.Current.Name -like 'explorer-cover*' } | Select-Object -First 1
 if (!$window) { throw '試作のウィンドウが見つかりません。' }
 [TestInput]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle) | Out-Null
 [TestInput]::TargetProcessId = [uint32]$ProcessId

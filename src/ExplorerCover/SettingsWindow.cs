@@ -33,6 +33,7 @@ internal sealed class SettingsWindow : Window
         buttons.Children.Add(reset); buttons.Children.Add(save); buttons.Children.Add(cancel); footer.Children.Add(buttons);
         var panel = new StackPanel();
         panel.Children.Add(new TextBlock { Text = "ショートカット", FontSize = 18, FontWeight = FontWeights.SemiBold });
+        panel.Children.Add(new TextBlock { Text = $"{ProductInfo.Name} バージョン {ProductInfo.Version}（ファイル版 {ProductInfo.FileVersion}）", Foreground = Brushes.DimGray, Margin = new Thickness(0, 3, 0, 0) });
         panel.Children.Add(new TextBlock { Text = "Ctrl+T のように入力。複数のキーは / で区切り、空欄で割り当てを解除します。[・] も使用できます。Ctrl・Altなしの [・] は文字編集中には実行しません。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 12) });
         foreach (var command in CommandCatalog.All)
         {

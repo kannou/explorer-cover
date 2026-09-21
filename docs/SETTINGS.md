@@ -12,7 +12,7 @@
 
 ## 保存と既存設定の扱い
 
-- 通常は`%LOCALAPPDATA%\explorer_cover\input.json`へ保存する。形式はversion 1で、`shortcuts`・`mouse`・`quickLook`をまとめる。
+- 通常は`%LOCALAPPDATA%\explorer-cover\input.json`へ保存する。形式はversion 1で、`shortcuts`・`mouse`・`quickLook`をまとめる。
 - 作業状態の`workspace.json`とは別。書き込みを完了した一時ファイルから置換し、前の内容を`.bak`に残す。失敗時は実行中の設定を変更せず、エラーと編集中の内容を画面に残す。
 - `input.json`がなければ既存の`shortcuts.json`・`mouse.json`・`quicklook.json`を読む。画面で保存すると統合設定へ移行し、以降はそちらを優先する。旧ファイルは変更しない。
 - 統合設定を読めなければ警告し、旧形式へフォールバックする。明示的な保存時には統合設定を置換し、元の内容をバックアップする。

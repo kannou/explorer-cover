@@ -9,7 +9,7 @@ internal static class MouseSettingsFile
     public static (MouseSettings Settings, string? Warning) Load()
     {
         var customPath = Environment.GetEnvironmentVariable("EXPLORER_COVER_MOUSE");
-        var path = customPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "explorer_cover", "mouse.json");
+        var path = customPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "explorer-cover", "mouse.json");
         try
         {
             return (customPath != null || File.Exists(path) ? MouseSettings.FromJson(File.ReadAllText(path)) : new(), null);

@@ -20,7 +20,7 @@ internal static class Program
         host.Error += errors.Add; host.Navigated += _ => completions++;
         var grid = new Grid(); grid.ColumnDefinitions.Add(new()); grid.ColumnDefinitions.Add(new());
         grid.Children.Add(host); Grid.SetColumn(other, 1); grid.Children.Add(other);
-        var window = new Window { Title = "explorer_cover navigation verification", Width = 800, Height = 400, Content = grid };
+        var window = new Window { Title = "explorer-cover navigation verification", Width = 800, Height = 400, Content = grid };
         var app = new Application();
         window.Loaded += async (_, _) =>
         {

@@ -24,7 +24,7 @@ public partial class App : Application
         string? stateWarning = null;
         if (e.Args.Length == 0 || customState != null)
         {
-            store = new WorkspaceStore(customState ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "explorer_cover", "workspace.json"));
+            store = new WorkspaceStore(customState ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "explorer-cover", "workspace.json"));
             (snapshot, stateWarning) = await Task.Run(store.Load);
             if (e.Args.Length != 0) snapshot = null;
         }

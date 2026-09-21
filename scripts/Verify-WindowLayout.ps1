@@ -82,7 +82,7 @@ function Assert([bool]$value,[string]$message) { if (!$value) { throw $message }
 $oldConfig=$env:EXPLORER_COVER_SHORTCUTS; $oldLog=$env:EXPLORER_COVER_LOG
 $settings=Join-Path $trial 'keys.json'; Set-Content $settings '{"version":1,"bindings":{}}' -Encoding utf8
 $env:EXPLORER_COVER_SHORTCUTS=$settings; $log=Join-Path $trial 'app.log'; $env:EXPLORER_COVER_LOG=$log
-$dll=Join-Path $root 'src\ExplorerCover\bin\Release\net10.0-windows\explorer_cover.dll'
+$dll=Join-Path $root 'src\ExplorerCover\bin\Release\net10.0-windows\explorer-cover.dll'
 $oldState=$env:EXPLORER_COVER_STATE
 $statePath=Join-Path $trial 'workspace.json'; $env:EXPLORER_COVER_STATE=$statePath
 $missing='\\wsl.localhost\Ubuntu-24.04\home\explorer-cover-missing-'+[Guid]::NewGuid().ToString('N')
@@ -93,7 +93,7 @@ function Start-App {
  $script:window=$null
  Wait-Until {
   if($app.HasExited){throw '起動に失敗'}
-  $script:window=[System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object {$_.Current.ProcessId -eq $app.Id -and $_.Current.Name -like 'explorer_cover*'} | Select-Object -First 1
+  $script:window=[System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$all) | Where-Object {$_.Current.ProcessId -eq $app.Id -and $_.Current.Name -like 'explorer-cover*'} | Select-Object -First 1
   $null -ne $script:window
  }
  [TabInput]::Target=[uint32]$app.Id
