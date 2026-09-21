@@ -245,6 +245,13 @@ public sealed class MainWindow : Window
                 Native.SendMessage(Native.GetFocus(), 0xB1, 0, -1);
                 handled = true;
             }
+            else if (msg.message == 0x100 && ((int)msg.wParam is 0x25 or 0x27) && Native.GetKeyState(0x12) >= 0)
+            {
+                // 未処理で返すとWPFの方向キーによるフォーカス移動に回るため、
+                // 名前編集欄へ直接届ける。Ctrl/Shiftの単語移動・範囲選択もEditに任せる。
+                Native.SendMessage(Native.GetFocus(), (uint)msg.message, msg.wParam, msg.lParam);
+                handled = true;
+            }
             return;
         }
         var modifiers = (Native.GetKeyState(0x11) < 0 ? KeyModifiers.Control : 0) |
