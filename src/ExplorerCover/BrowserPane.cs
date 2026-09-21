@@ -169,6 +169,10 @@ public sealed class BrowserPane : Grid, IDisposable
     public void AddTab(bool duplicate)
     {
         var path = duplicate ? State.SelectedTab.CurrentPath ?? State.SelectedTab.InitialPath : initialPath;
+        OpenInNewTab(path);
+    }
+    public void OpenInNewTab(string path)
+    {
         var tab = State.AddTab(path);
         AddView(tab); State.SelectTab(tab);
         focusAfterNavigation = tab;

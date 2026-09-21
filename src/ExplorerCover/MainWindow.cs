@@ -19,6 +19,8 @@ public sealed class MainWindow : Window
     private readonly CommandDispatcher commands = new();
     private readonly ShortcutService shortcuts;
     private readonly TextBlock help;
+    private ShellDialogFocus? shellDialogFocus;
+    private BrowserPane? shellInputOrigin;
     private QuickLookClient quickLook;
     private QuickLookSettings quickLookSettings;
     private MouseSettings mouseSettings;
@@ -85,7 +87,8 @@ public sealed class MainWindow : Window
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(State.Sidebar.Width), MinWidth = 160, MaxWidth = 380 });
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(5) });
         layout.ColumnDefinitions.Add(new ColumnDefinition());
-        sidebar = new(State, path => ViewFor(State.ActivePane).Navigate(path), restored == null);
+        sidebar = new(State, path => ViewFor(State.ActivePane).Navigate(path), restored == null,
+            path => ViewFor(State.ActivePane).OpenInNewTab(path), this.mouseSettings);
         layout.Children.Add(sidebar);
         var sidebarSplitter = new GridSplitter { Width = 5, HorizontalAlignment = HorizontalAlignment.Stretch, Background = Brushes.LightGray, ResizeDirection = GridResizeDirection.Columns, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
         System.Windows.Automation.AutomationProperties.SetAutomationId(sidebarSplitter, "Sidebar.Splitter");
@@ -118,16 +121,50 @@ public sealed class MainWindow : Window
         foreach (var verb in new[] { CommandIds.Copy, CommandIds.Cut, CommandIds.Paste, CommandIds.Delete, CommandIds.Rename })
             Register(verb, v =>
             {
-                try { v.Browser.ExecuteShellCommand(verb); }
+                var tab = v.State.SelectedTab;
+                var browser = v.Browser;
+                var path = browser.CurrentPath;
+                try { browser.ExecuteShellCommand(verb); }
                 catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or System.ComponentModel.Win32Exception or NotImplementedException or UnauthorizedAccessException or ArgumentException) { v.ShowOperationMessage("操作できません: " + ex.Message); }
+                finally
+                {
+                    if (verb == CommandIds.Delete)
+                        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, () =>
+                        {
+                            // Shellの確認画面とWPFのフォーカス復元が終わってから、元の一覧へ戻す。
+                            // 待機中に移動・タブ切替・別ペインへの操作があればフォーカスを奪わない。
+                            if (lifetime.IsCancellationRequested || !IsActive || !IsEnabled ||
+                                State.ActivePane != v.State || v.State.SelectedTab != tab ||
+                                browser.IsNavigating || browser.CurrentPath != path) return;
+                            browser.FocusView();
+                        });
+                }
             }, v => !v.Browser.IsNavigating);
         shortcuts.Changed += UpdateHelp;
         UpdateActivePane(); UpdateHelp();
         Loaded += (_, _) => { State.Activate(initialActivePane); ViewFor(initialActivePane).FocusAddress(); };
+        SourceInitialized += (_, _) => shellDialogFocus = new ShellDialogFocus(new WindowInteropHelper(this).Handle, Dispatcher, () =>
+        {
+            var pane = shellInputOrigin;
+            if (pane == null) return null; // 設定画面などWPFの操作によるダイアログは対象外。
+            var tab = pane.State.SelectedTab;
+            var browser = pane.Browser;
+            var path = browser.CurrentPath;
+            return () =>
+            {
+                if (lifetime.IsCancellationRequested || !IsActive || !IsEnabled ||
+                    State.ActivePane != pane.State || pane.State.SelectedTab != tab ||
+                    browser.IsNavigating || browser.CurrentPath != path) return;
+                browser.FocusView();
+                DiagnosticLog.Write("Shell dialog focus restored");
+            };
+        });
         ComponentDispatcher.ThreadFilterMessage += FilterMessage;
         PreviewKeyDown += HandleWpfKey;
+        PreviewMouseDown += (_, _) => shellInputOrigin = null;
         Closed += (_, _) =>
         {
+            shellDialogFocus?.Dispose();
             lifetime.Cancel();
             previewSelectionTimer.Stop();
             previewSelectionTimer.Tick -= PreviewSelectionChanged;
@@ -144,6 +181,7 @@ public sealed class MainWindow : Window
     {
         shortcuts.ApplyJson(InputSettings.ShortcutJson(settings.Shortcuts));
         mouseSettings = settings.Mouse; left.ApplyMouseSettings(mouseSettings); right.ApplyMouseSettings(mouseSettings);
+        sidebar.ApplyMouseSettings(mouseSettings);
         quickLookSettings = settings.QuickLook ?? new(); quickLook = new(quickLookSettings);
     }
     private BrowserPane? NativeFocusedPane => left.Browser.ContainsNativeFocus ? left : right.Browser.ContainsNativeFocus ? right : null;
@@ -232,6 +270,15 @@ public sealed class MainWindow : Window
 
     private void FilterMessage(ref MSG msg, ref bool handled)
     {
+        if (msg.message is 0x100 or 0x104 or 0x201 or 0x204) // キー、左右ボタンの押下
+        {
+            foreach (var pane in new[] { left, right })
+            {
+                var hwnd = pane.Browser.Handle;
+                if (hwnd != 0 && (msg.hwnd == hwnd || Native.IsChild(hwnd, msg.hwnd)))
+                { shellInputOrigin = pane; break; }
+            }
+        }
         if (handled || !IsActive || (msg.message != 0x100 && msg.message != 0x104)) return;
         var source = NativeFocusedPane;
         if (source == null) return; // WPFはIMEを認識できるPreviewKeyDownで処理。
@@ -271,6 +318,7 @@ public sealed class MainWindow : Window
 
     private void HandleWpfKey(object sender, KeyEventArgs e)
     {
+        if (NativeFocusedPane == null) shellInputOrigin = null;
         if (e.Handled || NativeFocusedPane != null || e.Key is Key.ImeProcessed or Key.DeadCharProcessed) return;
         var pane = left.Address.IsKeyboardFocusWithin ? left.State : right.Address.IsKeyboardFocusWithin ? right.State : State.ActivePane;
         var scope = left.Address.IsKeyboardFocusWithin || right.Address.IsKeyboardFocusWithin ? ShortcutScope.Address :

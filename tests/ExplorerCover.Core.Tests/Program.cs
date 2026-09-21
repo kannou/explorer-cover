@@ -223,6 +223,49 @@ Check("並べ替えは選択・タブID・編集中のパス・履歴を保持�
     Equal(true, pane.CloseTab(b)); Equal(c, pane.SelectedTab);
     Equal(false, pane.CloseTab(c));
 });
+Check("表示中のタブを閉じると並び順によらず直前のタブへ戻る", () =>
+{
+    var pane = new PaneState("A"); var a = pane.SelectedTab;
+    var b = pane.AddTab("B"); var c = pane.AddTab("C"); var d = pane.AddTab("D");
+    pane.SelectTab(c); pane.SelectTab(b); pane.SelectTab(a); pane.SelectTab(a);
+    pane.MoveTab(b, 3);
+    Equal(true, pane.CloseTab(a)); Equal(b, pane.SelectedTab);
+    Equal(true, pane.CloseTab(b)); Equal(c, pane.SelectedTab);
+    Equal(true, pane.CloseTab(c)); Equal(d, pane.SelectedTab);
+    Equal(false, pane.CloseTab(d)); Equal(d, pane.SelectedTab);
+});
+Check("再表示したタブは最新の表示順になり連続で閉じても戻れる", () =>
+{
+    var pane = new PaneState("A"); var a = pane.SelectedTab;
+    var b = pane.AddTab("B"); var c = pane.AddTab("C");
+    pane.SelectTab(b); pane.SelectTab(c); pane.SelectTab(a); pane.SelectTab(c);
+    Equal(true, pane.CloseTab(c)); Equal(a, pane.SelectedTab);
+    Equal(true, pane.CloseTab(a)); Equal(b, pane.SelectedTab);
+});
+Check("非表示のタブを閉じても表示は変わらず閉じたタブは戻り先から除く", () =>
+{
+    var pane = new PaneState("A"); var a = pane.SelectedTab;
+    var b = pane.AddTab("B"); var c = pane.AddTab("C"); var d = pane.AddTab("D");
+    pane.SelectTab(c); pane.SelectTab(b);
+    Equal(true, pane.CloseTab(c)); Equal(b, pane.SelectedTab);
+    Equal(true, pane.CloseTab(d)); Equal(b, pane.SelectedTab);
+    Equal(false, pane.CloseTab(c));
+    Equal(false, pane.CloseTab(new TabState("foreign")));
+    Equal(true, pane.CloseTab(b)); Equal(a, pane.SelectedTab);
+});
+Check("タブの表示順は左右のペインで独立する", () =>
+{
+    var state = new WorkspaceState("L", "R");
+    var left = state.Left.SelectedTab; var right = state.Right.SelectedTab;
+    var l2 = state.Left.AddTab("L2"); var l3 = state.Left.AddTab("L3");
+    var r2 = state.Right.AddTab("R2"); var r3 = state.Right.AddTab("R3");
+    state.Left.SelectTab(l3); state.Right.SelectTab(r2);
+    state.Left.SelectTab(left); state.Right.SelectTab(r3);
+    Equal(true, state.Left.CloseTab(left)); Equal(l3, state.Left.SelectedTab);
+    Equal(r3, state.Right.SelectedTab);
+    Equal(true, state.Right.CloseTab(r3)); Equal(r2, state.Right.SelectedTab);
+    Equal(l3, state.Left.SelectedTab);
+});
 Check("マウス設定の変更・無効化と省略時の初期値", () =>
 {
     Equal(TabCloseButton.Middle, MouseSettings.FromJson("{\"version\":1}").CloseTabButton);
@@ -420,6 +463,21 @@ Check("入力設定は解除・複数割当・マウス・QuickLookをまとめ�
     Throws<FormatException>(() => InputSettings.FromJson(settings.ToJson().Replace("\"right\"", "\"left\"")));
     Throws<FormatException>(() => InputSettings.FromJson("{\"version\":\"1\"}"));
     Throws<FormatException>(() => InputSettings.FromJson(settings.ToJson().Replace("\"F7\"", "\"Ctrl+W\"")));
+});
+Check("ブックマークの新規タブ設定は旧形式を読み込み、独立して保存・変更・無効化できる", () =>
+{
+    Equal(TabCloseButton.Middle, MouseSettings.FromJson("{\"version\":1,\"closeTabButton\":\"right\"}").OpenBookmarkInNewTabButton);
+    foreach (var button in Enum.GetValues<TabCloseButton>())
+    {
+        var mouse = MouseSettings.FromJson("{\"version\":1,\"openBookmarkInNewTabButton\":\"" + MouseSettings.ButtonName(button) + "\"}");
+        Equal(TabCloseButton.Middle, mouse.CloseTabButton);
+        Equal(button, mouse.OpenBookmarkInNewTabButton);
+        var settings = new InputSettings(new(), mouse);
+        Equal(mouse, InputSettings.FromJson(settings.ToJson()).Mouse);
+    }
+    foreach (var value in new[] { "\"left\"", "null", "1", "\"unknown\"" })
+        Throws<FormatException>(() => MouseSettings.FromJson("{\"version\":1,\"openBookmarkInNewTabButton\":" + value + "}"));
+    Throws<FormatException>(() => MouseSettings.FromJson("{\"version\":1,\"openBookmarkInNewTabButton\":\"right\",\"openBookmarkInNewTabButton\":\"middle\"}"));
 });
 Console.WriteLine($"{count - failures.Count}/{count} passed");
 return failures.Count == 0 ? 0 : 1;

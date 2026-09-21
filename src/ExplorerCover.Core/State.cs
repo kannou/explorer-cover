@@ -116,6 +116,7 @@ public sealed class PaneState : ObservableState
 {
     public Guid Id { get; } = Guid.NewGuid();
     private readonly ObservableCollection<TabState> tabs = [];
+    private readonly List<TabState> selectionHistory = [];
     public ReadOnlyObservableCollection<TabState> Tabs { get; }
     private TabState selectedTab;
     public TabState SelectedTab => selectedTab;
@@ -124,6 +125,7 @@ public sealed class PaneState : ObservableState
     {
         selectedTab = new(initialPath);
         tabs.Add(selectedTab);
+        selectionHistory.Add(selectedTab);
         Tabs = new(tabs);
     }
     public TabState AddTab(string path)
@@ -135,13 +137,18 @@ public sealed class PaneState : ObservableState
     public void SelectTab(TabState tab)
     {
         if (!tabs.Contains(tab)) throw new ArgumentException("このペインのタブではありません。", nameof(tab));
+        if (tab == selectedTab) return;
+        selectionHistory.Remove(tab);
+        selectionHistory.Add(tab);
         Set(ref selectedTab, tab, nameof(SelectedTab));
     }
     public bool CloseTab(TabState tab)
     {
         var index = tabs.IndexOf(tab);
         if (index < 0 || tabs.Count == 1) return false;
-        if (tab == selectedTab) SelectTab(tabs[index == tabs.Count - 1 ? index - 1 : index + 1]);
+        selectionHistory.Remove(tab);
+        // 表示済みのタブが残っていない場合だけ、隣のタブへ切り替える。
+        if (tab == selectedTab) SelectTab(selectionHistory.LastOrDefault() ?? tabs[index == tabs.Count - 1 ? index - 1 : index + 1]);
         tabs.Remove(tab);
         return true;
     }
