@@ -58,11 +58,50 @@ try
         await new QuickLookClient(new(), PipeName(), () => throw new Exception("未起動から起動しました"))
             .SwitchAsync(file, () => true, CancellationToken.None);
     });
-    await Check("送信直前に選択が変わったSwitchは破棄する", async () =>
+    await Check("送信直前の選択変更でもQuickLook 4.5の受信ループを止めない", async () =>
     {
-        var name = PipeName(); using var pipe = Server(name); var read = Read(pipe);
-        await new QuickLookClient(new(), name).SwitchAsync(file, () => false, CancellationToken.None);
-        Assert(await read == null);
+        var name = PipeName(); using var pipe = Server(name);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        async Task Receive()
+        {
+            using var reader = new StreamReader(pipe, leaveOpen: true);
+            for (var i = 0; i < 2; i++)
+            {
+                await pipe.WaitForConnectionAsync(timeout.Token);
+                var line = await reader.ReadLineAsync(timeout.Token);
+                // QuickLook 4.5と同様、nullを防御せず解析する。空行は無操作として受理する。
+                var fields = line!.Split('|');
+                if (i == 0) Assert(fields.Length == 1);
+                else Assert(line == "QuickLook.App.PipeMessages.Toggle|" + file);
+                pipe.Disconnect();
+            }
+        }
+        var receive = Receive();
+        var client = new QuickLookClient(new(), name, () => throw new Exception("再起動しました"));
+        await client.SwitchAsync(file, () => false, CancellationToken.None);
+        // 受信側の例外を先に確認し、後続接続のタイムアウトに隠さない。
+        await Task.WhenAny(receive, Task.Delay(100));
+        if (receive.IsCompleted) await receive;
+        await client.PreviewAsync(file, () => true, CancellationToken.None);
+        await receive;
+    });
+    await Check("接続後のキャンセル・選択確認の例外でもEOFを送らない", async () =>
+    {
+        foreach (var cancel in new[] { true, false })
+        {
+            var name = PipeName(); using var pipe = Server(name); var read = Read(pipe);
+            using var cancellation = new CancellationTokenSource();
+            var client = new QuickLookClient(new(), name);
+            bool Current()
+            {
+                if (!cancel) throw new InvalidOperationException("選択確認が失敗");
+                cancellation.Cancel();
+                return true;
+            }
+            if (cancel) await Throws<OperationCanceledException>(() => client.PreviewAsync(file, Current, cancellation.Token));
+            else await Throws<InvalidOperationException>(() => client.PreviewAsync(file, Current, cancellation.Token));
+            Assert(await read == "");
+        }
     });
     await Check("未検出・起動失敗・接続タイムアウトを通知可能な例外にする", async () =>
     {

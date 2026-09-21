@@ -33,31 +33,42 @@ internal sealed class QuickLookClient(QuickLookSettings settings, string? pipeNa
             var sid = identity.User?.Value ?? throw new IOException("ユーザーを識別できません。");
             var pipeName = pipeNameOverride ?? "QuickLook.App.Pipe." + sid;
             using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.Out, PipeOptions.Asynchronous);
-            try { await pipe.ConnectAsync(250, cancellation); }
+            cancellation.ThrowIfCancellationRequested();
+            // 接続成立とキャンセルが競合しても、成立した接続は必ず一行送って閉じる。
+            try { await pipe.ConnectAsync(250, CancellationToken.None); }
             catch (TimeoutException)
             {
+                cancellation.ThrowIfCancellationRequested();
                 if (switchOnly) return; // 選択変更だけではQuickLookを起動しない。
                 if (!stillCurrent()) return;
                 var start = (findStart ?? FindStartInfo)() ?? throw new IOException("QuickLookが見つかりません。起動するか設定画面で実行ファイルを指定してください。");
                 cancellation.ThrowIfCancellationRequested();
                 if (startProcess != null) startProcess(start);
                 else { using var process = Process.Start(start); }
-                await pipe.ConnectAsync(5000, cancellation);
+                cancellation.ThrowIfCancellationRequested();
+                try { await pipe.ConnectAsync(5000, CancellationToken.None); }
+                catch (TimeoutException) { cancellation.ThrowIfCancellationRequested(); throw; }
             }
-            cancellation.ThrowIfCancellationRequested();
-            // 呼び出し側でDispatcherへ戻してタブ・フォーカスを確認する。
-            if (!stillCurrent()) return;
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-            timeout.CancelAfter(TimeSpan.FromSeconds(2));
-            await using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true);
+            var message = "";
             try
             {
+                cancellation.ThrowIfCancellationRequested();
+                // 呼び出し側でDispatcherへ戻してタブ・フォーカスを確認する。
+                if (!stillCurrent()) return;
+                cancellation.ThrowIfCancellationRequested();
                 var command = switchOnly ? "Switch" : "Toggle";
-                await writer.WriteLineAsync(($"QuickLook.App.PipeMessages.{command}|" + path).AsMemory(), timeout.Token);
-                await writer.FlushAsync(timeout.Token);
+                message = $"QuickLook.App.PipeMessages.{command}|" + path;
             }
-            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
-            { throw new TimeoutException("QuickLookへの送信がタイムアウトしました。"); }
+            finally
+            {
+                // QuickLook 4.5はEOF(null)を処理できず受信ループが止まる。
+                // 取り消す場合も無操作の空行を送り、キャンセルで送信を中断しない。
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                var bytes = Encoding.UTF8.GetBytes(message + "\n");
+                try { await pipe.WriteAsync(bytes, timeout.Token); }
+                catch (OperationCanceledException)
+                { throw new TimeoutException("QuickLookへの送信がタイムアウトしました。"); }
+            }
             DiagnosticLog.Write(switchOnly ? "QuickLook selection switched" : "QuickLook request sent");
         }, cancellation);
     }
