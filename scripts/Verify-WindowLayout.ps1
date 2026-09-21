@@ -16,7 +16,7 @@ public static class TabInput {
  [DllImport("user32.dll")] static extern bool SetCursorPos(int x,int y);
  public static void Hover(int x,int y) { SetCursorPos(x,y); System.Threading.Thread.Sleep(250); }
  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hwnd,IntPtr hdc,uint flags);
- [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+ [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
  public static void Drag(int x,int y,int targetX,int targetY) {
   uint current; GetWindowThreadProcessId(GetForegroundWindow(),out current);
   if(current!=Target) throw new InvalidOperationException("検証対象が前面にありません。");
@@ -43,8 +43,9 @@ public static class TabInput {
  }
 }
 "@
-[TabInput]::SetProcessDPIAware() | Out-Null
+[TabInput]::SetThreadDpiAwarenessContext([IntPtr](-4)) | Out-Null
 $root = Split-Path -Parent $PSScriptRoot
+$env:DOTNET_ROOT=Join-Path $root '.tools\dotnet'
 $trial = Join-Path $root ('artifacts\window-layout-' + [Guid]::NewGuid().ToString('N'))
 $left = Join-Path $trial 'left'
 $right = Join-Path $trial 'right'
@@ -88,7 +89,7 @@ $missing='\\wsl.localhost\Ubuntu-24.04\home\explorer-cover-missing-'+[Guid]::New
 $seed=@{version=1;left=@{paths=@($a,$missing,$b);selectedIndex=2};right=@{paths=@($right);selectedIndex=0};activePane='right';leftPaneRatio=0.6;sidebarWidth=300;bookmarks=@()}
 $seed | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $statePath -Encoding utf8
 function Start-App {
- $script:app=Start-Process (Join-Path $root '.tools\dotnet\dotnet.exe') -ArgumentList @(('"'+$dll+'"')) -WindowStyle Hidden -PassThru
+ $script:app=Start-Process ([IO.Path]::ChangeExtension($dll,'.exe')) -WindowStyle Hidden -PassThru
  $script:window=$null
  Wait-Until {
   if($app.HasExited){throw '起動に失敗'}
@@ -103,7 +104,13 @@ function Close-App {
  Assert ($app.WaitForExit(10000)) '終了時の保存が完了しない'
  $script:window=$null
 }
-function Saved { Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json }
+function Saved {
+ for($attempt=0;$attempt -lt 10;$attempt++) {
+  try { return ([IO.File]::ReadAllText($statePath) | ConvertFrom-Json) }
+  catch [IO.IOException] { Start-Sleep -Milliseconds 30 }
+ }
+ throw '状態ファイルを読み取れない'
+}
 $seed.left=@{paths=@($a);selectedIndex=0}; $seed.right=@{paths=@($right);selectedIndex=0}
 $seed | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $statePath -Encoding utf8
 Add-Type -AssemblyName System.Windows.Forms
@@ -147,6 +154,29 @@ try {
  $rect=$window.Current.BoundingRectangle
  Assert ($rect.Left -ge $work.Left-2 -and $rect.Top -ge $work.Top-2 -and $rect.Right -le $work.Right+2 -and $rect.Bottom -le $work.Bottom+2) '画面外の位置・過大サイズを作業領域に収められない'
  'PASS: 画面外の保存位置と過大サイズを現在のモニターへ補正'
+ Close-App
+ foreach($screen in [System.Windows.Forms.Screen]::AllScreens) {
+  $work=$screen.WorkingArea
+  $expected=@{left=$work.Left+50;top=$work.Top+50;width=1400;height=800;maximized=$false}
+  $saved=Saved; $saved.window=$expected
+  $saved | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $statePath -Encoding utf8
+  for($repeat=0;$repeat -lt 4;$repeat++) {
+   Start-App
+   Wait-Until {BoundsMatch $expected}
+   Close-App
+   $actual=(Saved).window
+   Assert ($actual.left -eq $expected.left -and $actual.top -eq $expected.top -and $actual.width -eq $expected.width -and $actual.height -eq $expected.height) ('起動直後の終了で矩形が変化: '+($actual | ConvertTo-Json -Compress))
+  }
+  Start-App
+  (VisualState).SetWindowVisualState([System.Windows.Automation.WindowVisualState]::Maximized)
+  Close-App; Start-App
+  Assert ((VisualState).Current.WindowVisualState -eq [System.Windows.Automation.WindowVisualState]::Maximized) '別モニターの最大化を復元できない'
+  (VisualState).SetWindowVisualState([System.Windows.Automation.WindowVisualState]::Normal)
+  Wait-Until {BoundsMatch $expected}
+  Close-App
+  Write-Output ('PASS: '+$screen.DeviceName+' 起動直後の終了4回で位置・サイズ不変、最大化からも同じ矩形へ復帰')
+ }
+ Start-App
  Close-App
 } finally {
  if($script:window){try{Close-App}catch{Write-Warning $_}}

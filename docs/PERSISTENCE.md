@@ -68,3 +68,23 @@ $env:EXPLORER_COVER_STATE = 'D:\検証\workspace.json'
 `scripts/Verify-WindowLayout.ps1`で旧形式、通常サイズ・位置、最大化後の通常矩形、最小化前の表示状態、画面外・過大サイズの補正を再起動して確認した。記録: `artifacts/window-layout-dd4e3451ba384a3986847f073edb4c73/`。負座標のモニターと作業領域の計算はCoreテストで確認した。実機でのモニター着脱と異なるDPI間の移動は未検証。
 
 参照: [WINDOWPLACEMENTの座標系](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-windowplacement)、[SetWindowPlacement](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowplacement)。
+
+### 異なるDPIのモニターで起動するたびに拡大する不具合の修正
+
+2026-09-21の追加報告を受け、設定画面追加前の`bd829d1`を隔離して検証した。実行ファイルから起動すると、別モニター上の保存幅が1600→2000→2500→3125と増加することを確認した。設定・ショートカットの実装による回帰ではなく、ウィンドウ配置保存の導入時からの不具合だった。設定関連の変更を`a4815f8`へコミットした後、別の変更として修正した。
+
+モニターを移動する最初の配置時にDPIの調整が入り、保存した物理矩形が拡縮されていた。WPFのLoadedで移動先へ配置し、移動先のDPIが適用された後に同じ物理矩形を確定する。最大化も通常矩形の確定後に行い、通常表示に戻す際の拡大を防ぐ。
+
+従来の検証はDLLをdotnet経由で起動しており、実行ファイルに埋め込まれたPerMonitorV2のマニフェストが適用されず、この不具合を検出できなかった。`Verify-WindowLayout.ps1`をrun.cmdと同じ実行ファイルからの起動へ変更し、検証側の座標取得もPer-Monitor DPIに統一した。
+
+修正後のReleaseビルドは警告・エラーなし。接続中の2モニターそれぞれで、起動直後に終了する操作を4回繰り返してサイズ・位置が不変であること、最大化後の再起動と通常矩形への復帰を確認した。通常・最小化・旧形式・画面外補正の既存検証も成功。記録: `artifacts/window-layout-408f8174c8f944c5b58b36bf0cae6f7d`。モニターの物理的な着脱は未検証。
+
+既に拡大したサイズが保存されている場合、元の希望サイズを推定して自動縮小はしない。修正版で一度希望のサイズ・位置へ調整して終了すると、その矩形を維持する。
+
+### Windowsのスナップ配置への対応
+
+通常表示時の保存元を`WINDOWPLACEMENT.NormalPosition`から現在の外枠の矩形へ変更した。スナップ配置では通常表示の復帰先と現在の配置が異なるため、配置前の矩形を保存しないようにする。最大化・最小化中は引き続き通常表示への復帰先を使う。
+
+取得には画面座標を返す[GetWindowRect](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getwindowrect)を使い、作業領域座標からの変換を重ねない。保存するのは位置・サイズであり、Windowsのスナップグループ所属は復元しない。既存の画面外補正と最小サイズ制約は維持する。
+
+Releaseビルド成功（警告・エラーなし）。ユーザーの指定により、この追加修正の実画面検証はユーザーが実施し、スナップ配置後の保存・復元ができることを確認済み。
