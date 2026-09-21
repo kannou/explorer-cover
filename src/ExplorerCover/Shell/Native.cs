@@ -48,7 +48,27 @@ public interface IShellView
     void EnableModeless([MarshalAs(UnmanagedType.Bool)] bool enable);
     void UIActivate(uint state);
     void Refresh();
-    // 使用する先頭のメソッドのみ宣言。以降のvtableは呼び出さない。
+    void CreateViewWindow(nint previous, nint settings, nint shellBrowser, nint rect, out nint hwnd);
+    void DestroyViewWindow();
+    void GetCurrentInfo(nint settings);
+    void AddPropertySheetPages(uint reserved, nint callback, nint parameter);
+    void SaveViewState();
+    void SelectItem(nint pidl, uint flags);
+    void GetItemObject(uint item, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IContextMenu menu);
+}
+
+[ComImport, Guid("000214e4-0000-0000-c000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IContextMenu
+{
+    [PreserveSig] int QueryContextMenu(nint menu, uint index, uint first, uint last, uint flags);
+    void InvokeCommand(ref InvokeCommandInfo info);
+}
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+public struct InvokeCommandInfo
+{
+    public int Size; public uint Mask; public nint Window;
+    [MarshalAs(UnmanagedType.LPStr)] public string Verb;
+    public nint Parameters, Directory; public int Show; public uint HotKey; public nint Icon;
 }
 
 [ComImport, Guid("68284FAA-6A48-11D0-8C78-00C04FD918B4"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -89,6 +109,8 @@ internal interface IFolderView
     void Item(int index, out nint pidl);
     void ItemCount(uint flags, out int count);
     void Items(uint flags, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IShellItemArray items);
+    void GetSelectionMarkedItem(out int index);
+    void GetFocusedItem(out int index);
 }
 
 [ComImport, Guid("b63ea76d-1f85-456f-a19c-48159efa858b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

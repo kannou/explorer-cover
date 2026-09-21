@@ -34,6 +34,7 @@ public sealed class BrowserPane : Grid, IDisposable
     private string? operationMessage;
     public void ShowOperationMessage(string? message) { operationMessage = message; UpdateStatus(); }
     public event Action? Activated;
+    public void ApplyMouseSettings(MouseSettings settings) => tabs.ApplySettings(settings);
 
     public BrowserPane(string label, PaneState state, CommandDispatcher commands, MouseSettings mouseSettings)
     {

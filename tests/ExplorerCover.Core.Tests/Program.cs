@@ -113,7 +113,8 @@ Check("初期キーと入力範囲", () =>
     Equal(CommandIds.NavigateAddress, map.Resolve(Key("Enter"), InputScope.Address));
     Equal<string?>(null, map.Resolve(Key("Enter"), InputScope.Browser));
     Equal<string?>(null, map.Resolve(Key("Ctrl+L"), InputScope.None));
-    Equal<string?>(null, map.Resolve(Key("Ctrl+C"), InputScope.Browser));
+    Equal(CommandIds.Copy, map.Resolve(Key("Ctrl+C"), InputScope.Browser));
+    Equal<string?>(null, map.Resolve(Key("Ctrl+C"), InputScope.Address));
 });
 Check("キー変更・解除・初期値復帰と変更通知", () =>
 {
@@ -148,6 +149,18 @@ Check("文字編集・シェル・OSのキーを奪わない", () =>
 {
     foreach (var gesture in new[] { "A", "Shift+A", "Space", "Ctrl+Space", "Ctrl+A", "Ctrl+C", "Ctrl+V", "Ctrl+X", "F2", "F5", "Shift+F10", "Tab", "Enter", "Alt+F4", "Alt+Space", "Ctrl+Alt+K" })
         Throws<FormatException>(() => new ShortcutMap(new Dictionary<string, string[]> { [CommandIds.SwitchPane] = [gesture] }));
+});
+Check("角括弧のキーは保存でき、単独キーはパス入力を奪わない", () =>
+{
+    var map = new ShortcutMap(new Dictionary<string, string[]> { [CommandIds.Back] = ["[", "Ctrl+["], [CommandIds.Forward] = ["]", "Alt+]"] });
+    Equal(CommandIds.Back, map.Resolve(new(0xDB, KeyModifiers.None), InputScope.Browser));
+    Equal(CommandIds.Forward, map.Resolve(new(0xDD, KeyModifiers.None), InputScope.Chrome));
+    Equal<string?>(null, map.Resolve(Key("["), InputScope.Address));
+    Equal(CommandIds.Back, map.Resolve(Key("Ctrl+["), InputScope.Address));
+    Equal("[ / Ctrl+[", InputSettings.FromJson(new InputSettings(map, new()).ToJson()).Shortcuts.Display(CommandIds.Back));
+    Equal("Alt+]", Key("Alt+]").ToString());
+    Throws<FormatException>(() => new ShortcutMap(new Dictionary<string, string[]> { [CommandIds.Back] = ["["], [CommandIds.Forward] = ["["] }));
+    Throws<FormatException>(() => new ShortcutMap(new Dictionary<string, string[]> { [CommandIds.NavigateAddress] = ["["] }));
 });
 Check("入力表記の正規化", () =>
 {
@@ -184,7 +197,13 @@ Check("タブと履歴のキーを変更でき編集キーは保護する", () =
     Equal<string?>(null, map.Resolve(Key("Alt+Left"), InputScope.Browser));
     Equal(CommandIds.Back, map.Resolve(Key("F8"), InputScope.Browser));
     Equal(CommandIds.NextTab, map.Resolve(Key("Ctrl+J"), InputScope.Address));
-    foreach (var gesture in new[] { "Alt+Tab", "Shift+Tab", "Left", "Ctrl+Left", "Shift+Left", "Delete", "Ctrl+Back" })
+    map = ShortcutMap.FromJson(Json("{\"previousTab\":[\"Ctrl+PageUp\"],\"nextTab\":[\"Ctrl+PageDown\"]}"));
+    var restored = InputSettings.FromJson(new InputSettings(map, new()).ToJson()).Shortcuts;
+    Equal(CommandIds.PreviousTab, restored.Resolve(new(0x21, KeyModifiers.Control), InputScope.Browser));
+    Equal(CommandIds.NextTab, restored.Resolve(new(0x22, KeyModifiers.Control), InputScope.Address));
+    Equal("Ctrl+PageUp", restored.Display(CommandIds.PreviousTab));
+    Throws<FormatException>(() => new ShortcutMap(new Dictionary<string, string[]> { [CommandIds.PreviousTab] = ["Ctrl+PageUp"], [CommandIds.NextTab] = ["Ctrl+PageUp"] }));
+    foreach (var gesture in new[] { "Alt+Tab", "Shift+Tab", "Left", "Ctrl+Left", "Shift+Left", "Delete", "Ctrl+Back", "PageUp", "PageDown", "Shift+PageUp", "Ctrl+Shift+PageDown" })
         Throws<FormatException>(() => new ShortcutMap(new Dictionary<string, string[]> { [CommandIds.Back] = [gesture] }));
 });
 Check("並べ替えは選択・タブID・編集中のパス・履歴を保持する", () =>
@@ -388,6 +407,19 @@ Check("画面外と過大サイズを作業領域へ補正し、負座標のモ�
     Equal(onLeftMonitor, onLeftMonitor.FitToWorkArea(-1920, 30, 1920, 1050));
     Equal(new WindowSnapshot(0, 40, 1280, 680, false), new WindowSnapshot(500000, -500000, 8000, 8000, false).FitToWorkArea(0, 40, 1280, 680));
     Equal(new WindowSnapshot(280, 0, 1000, 600, true), new WindowSnapshot(5000, -400, 1000, 600, true).FitToWorkArea(0, 0, 1280, 720));
+});
+Check("入力設定は解除・複数割当・マウス・QuickLookをまとめて往復する", () =>
+{
+    var settings = new InputSettings(new(new Dictionary<string, string[]> { [CommandIds.Copy] = ["F7"], [CommandIds.QuickView] = [], [CommandIds.NewTab] = ["F8", "Ctrl+T"] }), new(TabCloseButton.Right), new(@"C:\Apps\QuickLook.exe"));
+    var restored = InputSettings.FromJson(settings.ToJson());
+    Equal(settings.ToJson(), restored.ToJson());
+    Equal<string?>(null, restored.Shortcuts.Resolve(ShortcutGesture.Parse("Ctrl+C"), InputScope.Browser));
+    Equal(CommandIds.Copy, restored.Shortcuts.Resolve(ShortcutGesture.Parse("F7"), InputScope.Browser));
+    Equal<string?>(null, restored.Shortcuts.Resolve(ShortcutGesture.Parse("F7"), InputScope.Address));
+    Equal("未割当", restored.Shortcuts.Display(CommandIds.QuickView));
+    Throws<FormatException>(() => InputSettings.FromJson(settings.ToJson().Replace("\"right\"", "\"left\"")));
+    Throws<FormatException>(() => InputSettings.FromJson("{\"version\":\"1\"}"));
+    Throws<FormatException>(() => InputSettings.FromJson(settings.ToJson().Replace("\"F7\"", "\"Ctrl+W\"")));
 });
 Console.WriteLine($"{count - failures.Count}/{count} passed");
 return failures.Count == 0 ? 0 : 1;

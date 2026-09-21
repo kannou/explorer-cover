@@ -26,7 +26,15 @@ function Wait-Until([scriptblock]$Check) {
  do { if (& $Check) { return }; Start-Sleep -Milliseconds 100 } while ([DateTime]::UtcNow -lt $deadline)
  throw '操作結果の待機がタイムアウトしました。'
 }
-function Find-Item([string]$name) { $window.FindAll($scope,$all) | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem -and $_.Current.Name -eq $name } | Select-Object -First 1 }
+function Find-Item([string]$name) {
+ # Shell一覧の更新中に消える子要素を、全件列挙で参照しない。
+ try {
+  $condition=[System.Windows.Automation.AndCondition]::new(
+   [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::ListItem),
+   [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty,$name))
+  $window.FindFirst($scope,$condition)
+ } catch [System.Windows.Automation.ElementNotAvailableException] { return $null }
+}
 $id = [Guid]::NewGuid().ToString('N').Substring(0,8)
 $name = "IME-$id.txt"
 Set-Content -LiteralPath (Join-Path $left $name) -Value 'IMEとドラッグ移動の検証'

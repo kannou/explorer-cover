@@ -6,6 +6,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using ExplorerCover.Core;
 using ExplorerCover.Shell;
+using ExplorerCover.Commands;
 using ShortcutScope = ExplorerCover.Core.InputScope;
 
 namespace ExplorerCover;
@@ -18,7 +19,9 @@ public sealed class MainWindow : Window
     private readonly CommandDispatcher commands = new();
     private readonly ShortcutService shortcuts;
     private readonly TextBlock help;
-    private readonly QuickLookClient quickLook;
+    private QuickLookClient quickLook;
+    private QuickLookSettings quickLookSettings;
+    private MouseSettings mouseSettings;
     private readonly CancellationTokenSource lifetime = new();
     private bool previewPending;
     private int previewKey = 0x20;
@@ -35,7 +38,9 @@ public sealed class MainWindow : Window
         State = restored ?? new(leftPath, rightPath);
         var initialActivePane = State.ActivePane;
         this.shortcuts = shortcuts;
-        quickLook = new(quickLookSettings ?? new());
+        this.mouseSettings = mouseSettings ?? new();
+        this.quickLookSettings = quickLookSettings ?? new();
+        quickLook = new(this.quickLookSettings);
         previewSelectionTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
         previewSelectionTimer.Tick += PreviewSelectionChanged;
         previewSelectionTimer.Start();
@@ -44,7 +49,12 @@ public sealed class MainWindow : Window
         FontFamily = new FontFamily("Yu Gothic UI"); FontSize = 13;
         var root = new DockPanel();
         help = new TextBlock { Margin = new Thickness(10, 7, 10, 7), Foreground = Brushes.DimGray, TextWrapping = TextWrapping.Wrap };
-        DockPanel.SetDock(help, Dock.Bottom); root.Children.Add(help);
+        var footer = new DockPanel(); DockPanel.SetDock(footer, Dock.Bottom); root.Children.Add(footer);
+        var settingsButton = new Button { Content = "⚙", ToolTip = "設定", Width = 34, Margin = new Thickness(4), FontSize = 18, Padding = new Thickness(0) };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(settingsButton, "OpenSettings");
+        System.Windows.Automation.AutomationProperties.SetName(settingsButton, "設定");
+        settingsButton.Click += (_, _) => new SettingsWindow(new(shortcuts.Map, this.mouseSettings, this.quickLookSettings), ApplyInputSettings) { Owner = this }.ShowDialog();
+        DockPanel.SetDock(settingsButton, Dock.Left); footer.Children.Add(settingsButton); footer.Children.Add(help);
         DockPanel.SetDock(saveWarning, Dock.Bottom); root.Children.Add(saveWarning);
         if (settingsWarning != null)
         {
@@ -100,6 +110,12 @@ public sealed class MainWindow : Window
         Register(CommandIds.Forward, v => v.NavigateHistory(1), v => v.CanNavigate && v.State.SelectedTab.History.CanGoForward);
         Register(CommandIds.Parent, v => v.NavigateParent(), v => v.CanNavigate && v.ParentPath != null);
         Register(CommandIds.QuickView, v => _ = PreviewAsync(v, previewKey), v => v.CanNavigate && !previewPending);
+        foreach (var verb in new[] { CommandIds.Copy, CommandIds.Cut, CommandIds.Paste, CommandIds.Delete, CommandIds.Rename })
+            Register(verb, v =>
+            {
+                try { v.Browser.ExecuteShellCommand(verb); }
+                catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or System.ComponentModel.Win32Exception or NotImplementedException or UnauthorizedAccessException or ArgumentException) { v.ShowOperationMessage("操作できません: " + ex.Message); }
+            }, v => !v.Browser.IsNavigating);
         shortcuts.Changed += UpdateHelp;
         UpdateActivePane(); UpdateHelp();
         Loaded += (_, _) => { State.Activate(initialActivePane); ViewFor(initialActivePane).FocusAddress(); };
@@ -119,6 +135,12 @@ public sealed class MainWindow : Window
     private BrowserPane ViewFor(PaneState pane) => pane == State.Left ? left : pane == State.Right ? right : throw new ArgumentException("不明なペインです。");
     private void Register(string id, Action<BrowserPane> run, Predicate<BrowserPane>? canRun = null) =>
         commands.Register(id, pane => { State.Activate(pane); run(ViewFor(pane)); }, pane => canRun?.Invoke(ViewFor(pane)) ?? true);
+    private void ApplyInputSettings(InputSettings settings)
+    {
+        shortcuts.ApplyJson(InputSettings.ShortcutJson(settings.Shortcuts));
+        mouseSettings = settings.Mouse; left.ApplyMouseSettings(mouseSettings); right.ApplyMouseSettings(mouseSettings);
+        quickLookSettings = settings.QuickLook ?? new(); quickLook = new(quickLookSettings);
+    }
     private BrowserPane? NativeFocusedPane => left.Browser.ContainsNativeFocus ? left : right.Browser.ContainsNativeFocus ? right : null;
     private void UpdateActivePane() { left.SetActive(State.ActivePane == State.Left); right.SetActive(State.ActivePane == State.Right); }
     private void UpdateHelp() => help.Text = $"{shortcuts.Map.Display(CommandIds.FocusAddress)}: パス入力  ·  {shortcuts.Map.Display(CommandIds.SwitchPane)}: 左右切替  ·  {shortcuts.Map.Display(CommandIds.NewTab)}: 新しいタブ  ·  {shortcuts.Map.Display(CommandIds.CloseTab)}: 閉じる  ·  {shortcuts.Map.Display(CommandIds.NextTab)}: 次のタブ  ·  {shortcuts.Map.Display(CommandIds.Back)} / {shortcuts.Map.Display(CommandIds.Forward)}: 戻る／進む  ·  {shortcuts.Map.Display(CommandIds.QuickView)}: QuickLook";
@@ -225,6 +247,13 @@ public sealed class MainWindow : Window
         if (msg.wParam == 0x09 && (modifiers & ~KeyModifiers.Shift) == 0)
         { commands.Execute(CommandIds.FocusAddress, source.State); handled = true; return; }
         handled = DispatchShortcut(new((int)msg.wParam, modifiers), ShortcutScope.Browser, source.State, (msg.lParam.ToInt64() & (1L << 30)) != 0);
+        if (!handled)
+        {
+            var gesture = new ShortcutGesture((int)msg.wParam, modifiers);
+            // 設定で解除・変更した標準キーをShellへ落として二重の割り当てにしない。
+            handled = CommandCatalog.All.Where(c => c.Id is CommandIds.Copy or CommandIds.Cut or CommandIds.Paste or CommandIds.Delete or CommandIds.Rename)
+                .Any(c => ShortcutGesture.Parse(c.DefaultGesture) == gesture);
+        }
         if (!handled) handled = source.Browser.TranslateShellKey(ref msg);
     }
 

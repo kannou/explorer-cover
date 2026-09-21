@@ -54,14 +54,7 @@ public sealed class WorkspaceStore(string path) : IDisposable
         WorkspaceSnapshot.FromJson(json);
         var bytes = Encoding.UTF8.GetBytes(json);
         if (bytes.Length > MaxBytes) throw new IOException("状態ファイルの保存上限を超えました。");
-        var temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
-        try
-        {
-            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { stream.Write(bytes); stream.Flush(true); }
-            if (File.Exists(path)) File.Replace(temporary, path, path + ".bak");
-            else File.Move(temporary, path);
-        }
-        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        AtomicFile.Write(path, json);
     }
     public void Dispose() { CanSave = false; ownership?.Dispose(); ownership = null; }
 }

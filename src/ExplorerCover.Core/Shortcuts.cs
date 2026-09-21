@@ -12,7 +12,7 @@ public readonly record struct ShortcutGesture(int VirtualKey, KeyModifiers Modif
         ["Enter"] = 0x0D, ["Escape"] = 0x1B, ["Tab"] = 0x09, ["Space"] = 0x20,
         ["Back"] = 0x08, ["Delete"] = 0x2E, ["Insert"] = 0x2D, ["Home"] = 0x24,
         ["End"] = 0x23, ["Left"] = 0x25, ["Up"] = 0x26, ["Right"] = 0x27, ["Down"] = 0x28,
-        ["PageUp"] = 0x21, ["PageDown"] = 0x22
+        ["PageUp"] = 0x21, ["PageDown"] = 0x22, ["["] = 0xDB, ["]"] = 0xDD
     };
     public static ShortcutGesture Parse(string text)
     {
@@ -45,6 +45,7 @@ public readonly record struct ShortcutGesture(int VirtualKey, KeyModifiers Modif
             (Modifiers.HasFlag(KeyModifiers.Shift) ? "Shift+" : "") +
             (Modifiers.HasFlag(KeyModifiers.Alt) ? "Alt+" : "") + key;
     }
+    public bool IsBracketTextKey => VirtualKey is 0xDB or 0xDD && (Modifiers & (KeyModifiers.Control | KeyModifiers.Alt)) == 0;
 }
 
 public sealed record ShortcutBinding(string CommandId, ShortcutGesture Gesture, InputScope Scopes);
@@ -66,9 +67,11 @@ public sealed class ShortcutMap
             {
                 var gesture = ShortcutGesture.Parse(text);
                 ValidateGesture(gesture, command);
-                if (bindings.Any(b => b.Gesture == gesture && (b.Scopes & command.Scopes) != 0))
+                var scopes = gesture.IsBracketTextKey ? command.Scopes & ~InputScope.Address : command.Scopes;
+                if (scopes == InputScope.None) throw new FormatException("パス欄の操作には [・] とCtrlまたはAltを組み合わせてください。");
+                if (bindings.Any(b => b.Gesture == gesture && (b.Scopes & scopes) != 0))
                     throw new FormatException($"キーが競合しています: {gesture}");
-                bindings.Add(new(command.Id, gesture, command.Scopes));
+                bindings.Add(new(command.Id, gesture, scopes));
             }
         }
         Bindings = bindings.AsReadOnly();
@@ -77,9 +80,11 @@ public sealed class ShortcutMap
     private static void ValidateGesture(ShortcutGesture gesture, CommandDefinition command)
     {
         var scopes = command.Scopes;
-        // 編集キーとOS／シェルの既存操作は、この段階では変更対象にしない。
+        // Shellコマンドの初期キー以外では、編集キーとOSの既存操作を保護する。
         var key = gesture.VirtualKey;
         var mods = gesture.Modifiers;
+        if (command.Id is CommandIds.Copy or CommandIds.Cut or CommandIds.Paste or CommandIds.Delete or CommandIds.Rename
+            && gesture == ShortcutGesture.Parse(command.DefaultGesture)) return;
         if (key is 0x0D or 0x1B && scopes != InputScope.Address)
             throw new FormatException("EnterとEscapeはパス欄の操作にのみ割り当てられます。");
         if (key is 0x0D or 0x1B && mods != KeyModifiers.None)
@@ -91,7 +96,8 @@ public sealed class ShortcutMap
         }
         var tabSwitch = key == 0x09 && mods is KeyModifiers.Control or (KeyModifiers.Control | KeyModifiers.Shift);
         var navigation = key is 0x25 or 0x26 or 0x27 && mods == KeyModifiers.Alt;
-        if (!tabSwitch && !navigation && (key == 0x09 || key is 0x08 or 0x2D or 0x2E || key is >= 0x21 and <= 0x28))
+        var controlPage = key is 0x21 or 0x22 && mods == KeyModifiers.Control;
+        if (!tabSwitch && !navigation && !controlPage && (key == 0x09 || key is 0x08 or 0x2D or 0x2E || key is >= 0x21 and <= 0x28))
             throw new FormatException("Tab・編集・カーソル移動キーは予約されています。");
         if (mods == KeyModifiers.Alt && key == 0x73 || mods == KeyModifiers.Control && key == 0x1B)
             throw new FormatException("OSの操作に予約されたキーです。");
@@ -105,6 +111,7 @@ public sealed class ShortcutMap
             return;
         }
         if (key is 0x0D or 0x1B && mods == KeyModifiers.None) return;
+        if (gesture.IsBracketTextKey) return;
         if (!mods.HasFlag(KeyModifiers.Control) && !mods.HasFlag(KeyModifiers.Alt))
             throw new FormatException("文字キーにはCtrlまたはAltを付けてください。");
     }

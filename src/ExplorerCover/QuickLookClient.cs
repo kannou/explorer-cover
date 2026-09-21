@@ -28,7 +28,7 @@ internal sealed class QuickLookClient(QuickLookSettings settings, string? pipeNa
         {
             if (!File.Exists(path)) throw new IOException("選択ファイルが存在しないか、アクセスできません。");
             if (!switchOnly && settings.ExecutablePath != null && !File.Exists(settings.ExecutablePath))
-                throw new IOException("設定したQuickLook.exeが見つかりません。quicklook.jsonを確認してください。");
+                throw new IOException("設定したQuickLook.exeが見つかりません。設定画面の起動先を確認してください。");
             using var identity = WindowsIdentity.GetCurrent();
             var sid = identity.User?.Value ?? throw new IOException("ユーザーを識別できません。");
             var pipeName = pipeNameOverride ?? "QuickLook.App.Pipe." + sid;
@@ -38,7 +38,7 @@ internal sealed class QuickLookClient(QuickLookSettings settings, string? pipeNa
             {
                 if (switchOnly) return; // 選択変更だけではQuickLookを起動しない。
                 if (!stillCurrent()) return;
-                var start = (findStart ?? FindStartInfo)() ?? throw new IOException("QuickLookが見つかりません。起動するかquicklook.jsonで実行ファイルを指定してください。");
+                var start = (findStart ?? FindStartInfo)() ?? throw new IOException("QuickLookが見つかりません。起動するか設定画面で実行ファイルを指定してください。");
                 cancellation.ThrowIfCancellationRequested();
                 if (startProcess != null) startProcess(start);
                 else { using var process = Process.Start(start); }

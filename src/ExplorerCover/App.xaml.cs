@@ -14,7 +14,10 @@ public partial class App : Application
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var settings = ShortcutSettings.Load();
         var mouse = MouseSettingsFile.Load();
+        var input = InputSettingsFile.Load();
+        if (input.Settings != null) { settings.Service.ApplyJson(InputSettings.ShortcutJson(input.Settings.Shortcuts)); mouse = (input.Settings.Mouse, null); }
         var quickLook = QuickLookSettingsFile.Load();
+        if (input.Settings?.QuickLook != null) quickLook = (input.Settings.QuickLook, null);
         var customState = Environment.GetEnvironmentVariable("EXPLORER_COVER_STATE");
         WorkspaceStore? store = null;
         WorkspaceSnapshot? snapshot = null;
@@ -25,7 +28,7 @@ public partial class App : Application
             (snapshot, stateWarning) = await Task.Run(store.Load);
             if (e.Args.Length != 0) snapshot = null;
         }
-        var warning = string.Join("\n", new[] { settings.Warning, mouse.Warning, quickLook.Warning, stateWarning }.Where(value => value != null));
+        var warning = string.Join("\n", new[] { input.Settings == null ? settings.Warning : null, mouse.Warning, input.Warning, quickLook.Warning, stateWarning }.Where(value => value != null));
         var window = new MainWindow(e.Args.ElementAtOrDefault(0) ?? home, e.Args.ElementAtOrDefault(1) ?? home, settings.Service, warning.Length == 0 ? null : warning, mouse.Settings, quickLook.Settings, snapshot?.Restore());
         WindowLayout.RestoreOnShow(window, snapshot?.Window);
         if (store != null) _ = new WorkspacePersistence(window, store);

@@ -5,6 +5,11 @@ public enum InputScope { None = 0, Browser = 1, Address = 2, Chrome = 4 }
 
 public static class CommandIds
 {
+    public const string Copy = "copy";
+    public const string Cut = "cut";
+    public const string Paste = "paste";
+    public const string Delete = "delete";
+    public const string Rename = "rename";
     public const string QuickView = "quickView";
     public const string FocusAddress = "focusAddress";
     public const string FocusFiles = "focusFiles";
@@ -26,6 +31,11 @@ public static class CommandCatalog
 {
     public static IReadOnlyList<CommandDefinition> All { get; } = Array.AsReadOnly(new[]
     {
+        new CommandDefinition(CommandIds.Copy, "選択項目をコピー", InputScope.Browser, "Ctrl+C"),
+        new CommandDefinition(CommandIds.Cut, "選択項目を切り取り", InputScope.Browser, "Ctrl+X"),
+        new CommandDefinition(CommandIds.Paste, "現在のフォルダーに貼り付け", InputScope.Browser, "Ctrl+V"),
+        new CommandDefinition(CommandIds.Delete, "選択項目を削除", InputScope.Browser, "Delete"),
+        new CommandDefinition(CommandIds.Rename, "選択項目の名前を変更", InputScope.Browser, "F2"),
         new CommandDefinition(CommandIds.QuickView, "QuickLookでプレビュー", InputScope.Browser, "Space"),
         new CommandDefinition(CommandIds.FocusAddress, "パス入力へ移動", InputScope.Browser | InputScope.Address | InputScope.Chrome, "Ctrl+L"),
         new CommandDefinition(CommandIds.FocusFiles, "パス編集を取り消して一覧へ戻る", InputScope.Address, "Escape"),

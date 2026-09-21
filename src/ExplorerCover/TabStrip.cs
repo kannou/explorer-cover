@@ -15,7 +15,7 @@ internal sealed class TabStrip : Grid, IDisposable
     private readonly PaneState state;
     private readonly Action<TabState> close;
     private readonly Action add;
-    private readonly MouseButton? closeButton;
+    private MouseButton? closeButton;
     private readonly StackPanel headers = new() { Orientation = Orientation.Horizontal };
     private readonly Dictionary<TabState, RadioButton> buttons = [];
     private readonly ScrollViewer scroll;
@@ -34,11 +34,7 @@ internal sealed class TabStrip : Grid, IDisposable
     public TabStrip(PaneState state, MouseSettings settings, Action<TabState> close, Action add, string label)
     {
         this.state = state; this.close = close; this.add = add;
-        closeButton = settings.CloseTabButton switch
-        {
-            TabCloseButton.Middle => MouseButton.Middle, TabCloseButton.Right => MouseButton.Right,
-            TabCloseButton.XButton1 => MouseButton.XButton1, TabCloseButton.XButton2 => MouseButton.XButton2, _ => null
-        };
+        ApplySettings(settings);
         Background = Brushes.Transparent; ClipToBounds = true;
         scroll = new ScrollViewer { Content = headers, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Background = Brushes.Transparent, CanContentScroll = false };
         Children.Add(scroll); Children.Add(marker);
@@ -51,6 +47,15 @@ internal sealed class TabStrip : Grid, IDisposable
 
     public void Add(TabState tab, RadioButton button)
     { buttons.Add(tab, button); button.Tag = tab; headers.Children.Add(button); }
+    public void ApplySettings(MouseSettings settings)
+    {
+        Cancel();
+        closeButton = settings.CloseTabButton switch
+        {
+            TabCloseButton.Middle => MouseButton.Middle, TabCloseButton.Right => MouseButton.Right,
+            TabCloseButton.XButton1 => MouseButton.XButton1, TabCloseButton.XButton2 => MouseButton.XButton2, _ => null
+        };
+    }
     public void Reveal(TabState tab)
     {
         // 追加・並べ替え直後は見出しの位置が未確定。レイアウト後にスクロールする。

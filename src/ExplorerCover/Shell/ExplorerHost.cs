@@ -240,6 +240,41 @@ public sealed class ExplorerHost : HwndHost
         return browser is IInputObject input && input.TranslateAcceleratorIO(ref msg) == 0;
     }
 
+    public void ExecuteShellCommand(string verb)
+    {
+        if (IsNavigating) return;
+        var view = GetView(); IContextMenu? menu = null; nint popup = 0;
+        try
+        {
+            if (view == null) return;
+            if (verb != "paste") { if (view is not IFolderView folder) return; folder.ItemCount(1, out var count); if (count == 0) return; }
+            if (verb == "rename" && view is IFolderView renameView)
+            {
+                renameView.GetFocusedItem(out var index);
+                if (index < 0) return;
+                renameView.Item(index, out var item);
+                try { view.SelectItem(item, 0x13); } // SVSI_EDIT | SVSI_FOCUSED
+                finally { Marshal.FreeCoTaskMem(item); }
+                return;
+            }
+            var iid = typeof(IContextMenu).GUID;
+            view.GetItemObject(verb == "paste" ? 0u : 1u, ref iid, out menu);
+            popup = CreatePopupMenu();
+            if (popup == 0) throw new Win32Exception(Marshal.GetLastWin32Error());
+            Marshal.ThrowExceptionForHR(menu.QueryContextMenu(popup, 0, 1, 0x7FFF, 0x10)); // CMF_CANRENAME
+            var info = new InvokeCommandInfo { Size = Marshal.SizeOf<InvokeCommandInfo>(), Window = new WindowInteropHelper(Window.GetWindow(this)).Handle, Verb = verb, Show = 1 };
+            menu.InvokeCommand(ref info);
+        }
+        finally
+        {
+            if (popup != 0) DestroyMenu(popup);
+            if (menu != null) Marshal.ReleaseComObject(menu);
+            if (view != null) Marshal.ReleaseComObject(view);
+        }
+    }
+    [DllImport("user32.dll", SetLastError = true)] private static extern nint CreatePopupMenu();
+    [DllImport("user32.dll")] private static extern bool DestroyMenu(nint menu);
+
     protected override bool TabIntoCore(TraversalRequest request) => FocusView();
     protected override bool TranslateAcceleratorCore(ref MSG msg, ModifierKeys modifiers) => false; // MainWindowで一度だけ転送する
 
