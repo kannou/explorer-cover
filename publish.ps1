@@ -33,6 +33,17 @@ try {
         if (!(Test-Path -LiteralPath (Join-Path $staging $file))) { throw "発行ファイルが不足しています: $file" }
     }
     Copy-Item -LiteralPath (Join-Path $root 'docs\RUNNING.md') -Destination (Join-Path $staging '使い方.md')
+    Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $staging 'LICENSE-explorer-cover.txt')
+    Copy-Item -LiteralPath (Join-Path $root 'THIRD-PARTY-NOTICES.md') -Destination (Join-Path $staging 'THIRD-PARTY-NOTICES.md')
+    $dotnetLicenseDir = Join-Path $staging 'licenses\dotnet'
+    New-Item -ItemType Directory -Force -Path $dotnetLicenseDir | Out-Null
+    $dotnetRoot = Split-Path -Parent $sdk
+    $dotnetLicense = Join-Path $dotnetRoot 'LICENSE.txt'
+    $dotnetNotices = Join-Path $dotnetRoot 'ThirdPartyNotices.txt'
+    if (!(Test-Path -LiteralPath $dotnetLicense)) { $dotnetLicense = Join-Path $root 'licenses\dotnet\LICENSE.txt' }
+    if (!(Test-Path -LiteralPath $dotnetNotices)) { $dotnetNotices = Join-Path $root 'licenses\dotnet\ThirdPartyNotices.txt' }
+    Copy-Item -LiteralPath $dotnetLicense -Destination (Join-Path $dotnetLicenseDir 'LICENSE.txt')
+    Copy-Item -LiteralPath $dotnetNotices -Destination (Join-Path $dotnetLicenseDir 'ThirdPartyNotices.txt')
     Assert-Closed
     if (Test-Path -LiteralPath $target) { Move-Item -LiteralPath $target -Destination $backup }
     try { Move-Item -LiteralPath $staging -Destination $target }

@@ -1,5 +1,23 @@
 # explorer-cover
 
+## explorer-coverとは
+
+explorer-coverは、Windows Explorerのファイル操作をそのまま使いながら、ウィンドウの構成を使いやすくするための外側UIです。左右2ペインとタブを一つのウィンドウにまとめ、最後に使っていたタブ・パス・ペイン幅・ウィンドウ位置を保存して、次回起動時に復元します。
+
+ファイル一覧の表示、右クリックメニュー、コピー・移動、ドラッグ＆ドロップなどの操作はWindows Shell／Explorerに任せます。explorer-cover自身がフルスクラッチのファイル管理機能を持つのではなく、Explorerを普段どおり使いながら、タブ、ショートカット、サイドビュー、QuickLook連携を追加する設計です。
+
+主な機能:
+
+- 左右2ペインと、各ペインの複数タブ
+- タブ、パス、ペイン幅、ブックマーク、ウィンドウ位置・サイズの保存と復元
+- Windows Shellによる右クリックメニュー、ドラッグ＆ドロップ、ファイル操作
+- ドライブとブックマークを表示するサイドビュー
+- WSLの`\\wsl.localhost\...`パスへの移動
+- QuickLookを使ったSpaceキーのファイルプレビュー
+- 設定画面からのキーボードショートカット変更
+
+![explorer-coverの画面（開発中の検証版）](docs/images/explorer-cover.png)
+
 現在のバージョン: `0.1.0`（ファイル版 `0.1.0.0`）。開発中の初回実用版で、設定・作業状態の保存形式は今後変更される可能性があります。
 
 C#＋WPFで外枠を作り、Windows Shellの`IExplorerBrowser`を左右に埋め込んだファイラーの試作です。プロジェクト名の`explorer-cover`は、Explorerの閲覧・操作機能を包み、配置と状態管理を自分好みにする外枠を表します。
@@ -41,7 +59,7 @@ PowerShellから左右の場所を指定する場合:
 .\run.ps1 -LeftPath 'D:\作業' -RightPath 'D:\資料'
 ```
 
-別の環境では、Windows x64と.NET 10 SDK（WPFの開発に対応するWindows版）が必要です。SDKの`dotnet`がPATHにあれば、ローカルSDKがなくても起動できます。外部NuGetパッケージは使っていません。
+別の環境では、Windows x64と.NET 10 SDK（WPFの開発に対応するWindows版）が必要です。SDKの`dotnet`がPATHにあれば、ローカルSDKがなくても起動できます。外部NuGetパッケージは使っていません。配布物に含まれる.NET／WPFランタイムと、別途インストールするQuickLookの扱いは[第三者ライセンス・同梱物](THIRD-PARTY-NOTICES.md)に記載しています。
 
 ## 操作
 
@@ -187,6 +205,10 @@ Remove-Item Env:\EXPLORER_COVER_MOUSE
 - ネットワーク、クラウド、すべてのシェル拡張、異なるDPIの複数モニター間移動は未検証です。
 - アクセスできないパスはペイン下部にエラーを表示します。時間のかかるネットワークパスなどでの非同期化は今後の検討対象です。
 - 試用フォルダーは自動削除しません。
+
+## ライセンス
+
+explorer-coverのコードは[MIT License](LICENSE)で提供します。自己完結型の配布物に含まれる.NET／WPFランタイムには別のMicrosoftライセンスと第三者通知が適用されます。QuickLookは同梱せず、別途インストールしたものに接続します。詳細は[第三者ライセンス・同梱物](THIRD-PARTY-NOTICES.md)を確認してください。
 
 ## 開発と検証
 
