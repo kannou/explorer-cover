@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using ExplorerCover.Core;
@@ -14,6 +15,14 @@ public sealed class SidebarView : DockPanel, IDisposable
 {
     private readonly WorkspaceState workspace;
     private readonly Action<string> navigate;
+    private readonly Action<string>? openInNewTab;
+    private MouseButton? newTabButton;
+
+    public void ApplyMouseSettings(MouseSettings settings) => newTabButton = settings.OpenBookmarkInNewTabButton switch
+    {
+        TabCloseButton.Middle => MouseButton.Middle, TabCloseButton.Right => MouseButton.Right,
+        TabCloseButton.XButton1 => MouseButton.XButton1, TabCloseButton.XButton2 => MouseButton.XButton2, _ => null
+    };
     private readonly StackPanel bookmarks = new();
     private readonly StackPanel drives = new();
     private readonly ShellIcons icons = new();
@@ -23,9 +32,12 @@ public sealed class SidebarView : DockPanel, IDisposable
     private readonly DriveMonitor monitor;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(10) };
 
-    public SidebarView(WorkspaceState workspace, Action<string> navigate, bool initializeBookmarks = true)
+    public SidebarView(WorkspaceState workspace, Action<string> navigate, bool initializeBookmarks = true,
+        Action<string>? openInNewTab = null, MouseSettings? mouseSettings = null)
     {
         this.workspace = workspace; this.navigate = navigate;
+        this.openInNewTab = openInNewTab;
+        ApplyMouseSettings(mouseSettings ?? new());
         Background = new SolidColorBrush(Color.FromRgb(248, 249, 251));
         var body = new StackPanel { Margin = new Thickness(8, 8, 8, 12) };
         body.Children.Add(SectionHeader("ドライブ", "↻", "ドライブを更新", "Sidebar.RefreshDrives", () => _ = monitor!.RefreshAsync()));
@@ -58,6 +70,35 @@ public sealed class SidebarView : DockPanel, IDisposable
         button.Click += (_, _) => action();
         return button;
     }
+    private Button MakeNavigationButton(string id, string path)
+    {
+        var button = MakeButton("", id, () => navigate(path));
+        MouseButton? pressedButton = null;
+        button.PreviewMouseDown += (_, e) =>
+        {
+            if (openInNewTab == null || e.ChangedButton != newTabButton) return;
+            pressedButton = e.ChangedButton;
+            if (!button.CaptureMouse()) pressedButton = null;
+            e.Handled = true;
+        };
+        button.PreviewMouseUp += (_, e) =>
+        {
+            if (e.ChangedButton != pressedButton) return;
+            var point = e.GetPosition(button);
+            var shouldOpen = e.ChangedButton == newTabButton && point.X >= 0 && point.X < button.ActualWidth && point.Y >= 0 && point.Y < button.ActualHeight;
+            pressedButton = null;
+            button.ReleaseMouseCapture();
+            e.Handled = true;
+            if (shouldOpen) openInNewTab!(path);
+        };
+        button.LostMouseCapture += (_, _) => pressedButton = null;
+        button.ContextMenuOpening += (_, e) =>
+        {
+            // 右ボタンを割り当てても、キーボードからのメニュー表示は維持する。
+            if (newTabButton == MouseButton.Right && openInNewTab != null && e.CursorLeft >= 0) e.Handled = true;
+        };
+        return button;
+    }
     private static DockPanel SectionHeader(string title, string symbol, string hint, string id, Action action, double top = 0)
     {
         var header = new DockPanel { Margin = new Thickness(4, top, 0, 4) };
@@ -81,7 +122,7 @@ public sealed class SidebarView : DockPanel, IDisposable
         bookmarks.Children.Clear();
         foreach (var bookmark in workspace.Sidebar.Bookmarks)
         {
-            var button = MakeButton("", "Sidebar.Bookmark." + bookmark.Id, () => navigate(bookmark.Path));
+            var button = MakeNavigationButton("Sidebar.Bookmark." + bookmark.Id, bookmark.Path);
             var content = new Grid(); content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) }); content.ColumnDefinitions.Add(new ColumnDefinition());
             var icon = new Image { Width = 16, Height = 16, HorizontalAlignment = HorizontalAlignment.Left };
             content.Children.Add(icon);
@@ -159,7 +200,7 @@ public sealed class SidebarView : DockPanel, IDisposable
             line.Children.Add(icon); Grid.SetColumn(name, 1); line.Children.Add(name); Grid.SetColumn(capacity, 2); line.Children.Add(capacity);
             name.VerticalAlignment = VerticalAlignment.Center;
             var content = new StackPanel(); content.Children.Add(line); content.Children.Add(bar);
-            var button = MakeButton("", "Sidebar.Drive." + path, () => navigate(path));
+            var button = MakeNavigationButton("Sidebar.Drive." + path, path);
             button.Content = content; button.HorizontalContentAlignment = HorizontalAlignment.Stretch; button.ToolTip = path;
             AutomationProperties.SetName(button, path);
             button.Visibility = Visibility.Collapsed;

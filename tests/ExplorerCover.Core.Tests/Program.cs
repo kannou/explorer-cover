@@ -421,5 +421,20 @@ Check("入力設定は解除・複数割当・マウス・QuickLookをまとめ�
     Throws<FormatException>(() => InputSettings.FromJson("{\"version\":\"1\"}"));
     Throws<FormatException>(() => InputSettings.FromJson(settings.ToJson().Replace("\"F7\"", "\"Ctrl+W\"")));
 });
+Check("ブックマークの新規タブ設定は旧形式を読み込み、独立して保存・変更・無効化できる", () =>
+{
+    Equal(TabCloseButton.Middle, MouseSettings.FromJson("{\"version\":1,\"closeTabButton\":\"right\"}").OpenBookmarkInNewTabButton);
+    foreach (var button in Enum.GetValues<TabCloseButton>())
+    {
+        var mouse = MouseSettings.FromJson("{\"version\":1,\"openBookmarkInNewTabButton\":\"" + MouseSettings.ButtonName(button) + "\"}");
+        Equal(TabCloseButton.Middle, mouse.CloseTabButton);
+        Equal(button, mouse.OpenBookmarkInNewTabButton);
+        var settings = new InputSettings(new(), mouse);
+        Equal(mouse, InputSettings.FromJson(settings.ToJson()).Mouse);
+    }
+    foreach (var value in new[] { "\"left\"", "null", "1", "\"unknown\"" })
+        Throws<FormatException>(() => MouseSettings.FromJson("{\"version\":1,\"openBookmarkInNewTabButton\":" + value + "}"));
+    Throws<FormatException>(() => MouseSettings.FromJson("{\"version\":1,\"openBookmarkInNewTabButton\":\"right\",\"openBookmarkInNewTabButton\":\"middle\"}"));
+});
 Console.WriteLine($"{count - failures.Count}/{count} passed");
 return failures.Count == 0 ? 0 : 1;

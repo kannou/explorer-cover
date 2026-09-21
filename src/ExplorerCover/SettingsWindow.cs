@@ -11,6 +11,7 @@ internal sealed class SettingsWindow : Window
 {
     private readonly Dictionary<string, TextBox> fields = [];
     private readonly ComboBox closeButton = new() { Width = 210, HorizontalAlignment = HorizontalAlignment.Left };
+    private readonly ComboBox bookmarkButton = new() { Width = 210, HorizontalAlignment = HorizontalAlignment.Left };
     private readonly TextBlock error = new() { Foreground = Brushes.Firebrick, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 8) };
     private readonly Button save = new() { Content = "保存", IsDefault = true, MinWidth = 80 };
     private readonly Action<InputSettings> apply;
@@ -49,6 +50,13 @@ internal sealed class SettingsWindow : Window
         foreach (var (value, label) in new[] { (TabCloseButton.Middle, "中ボタン"), (TabCloseButton.Right, "右ボタン"), (TabCloseButton.XButton1, "サイドボタン1"), (TabCloseButton.XButton2, "サイドボタン2"), (TabCloseButton.None, "無効") })
             closeButton.Items.Add(new ComboBoxItem { Content = label, Tag = value });
         AutomationProperties.SetAutomationId(closeButton, "Settings.CloseTabButton"); closeButton.SelectionChanged += (_, _) => Validate(); panel.Children.Add(closeButton);
+        panel.Children.Add(new TextBlock { Text = "ブックマーク・ドライブを新規タブで開くマウスボタン", FontSize = 16, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 8) });
+        foreach (var (value, label) in new[] { (TabCloseButton.Middle, "中ボタン（ホイールクリック）"), (TabCloseButton.Right, "右ボタン"), (TabCloseButton.XButton1, "サイドボタン1"), (TabCloseButton.XButton2, "サイドボタン2"), (TabCloseButton.None, "無効") })
+            bookmarkButton.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+        AutomationProperties.SetAutomationId(bookmarkButton, "Settings.OpenBookmarkInNewTabButton");
+        AutomationProperties.SetName(bookmarkButton, "ブックマーク・ドライブを新規タブで開くマウスボタン");
+        bookmarkButton.SelectionChanged += (_, _) => Validate(); panel.Children.Add(bookmarkButton);
+        panel.Children.Add(new TextBlock { Text = "現在のペインにタブを追加して選択します。左クリックは現在のタブで開きます。右ボタンに割り当てた場合、ブックマークのメニューはShift+F10で表示できます。", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.DimGray, Margin = new Thickness(0, 6, 0, 0) });
         panel.Children.Add(new TextBlock { Text = "QuickLookの起動先（空欄で自動検出）", FontSize = 16, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 18, 0, 8) });
         AutomationProperties.SetAutomationId(quickLookPath, "Settings.QuickLookPath"); AutomationProperties.SetName(quickLookPath, "QuickLook.exeの絶対パス");
         quickLookPath.TextChanged += (_, _) => Validate(); panel.Children.Add(quickLookPath);
@@ -61,12 +69,13 @@ internal sealed class SettingsWindow : Window
         quickLookPath.Text = settings.QuickLook?.ExecutablePath ?? "";
         foreach (var command in CommandCatalog.All) fields[command.Id].Text = string.Join(" / ", settings.Shortcuts.Bindings.Where(b => b.CommandId == command.Id).Select(b => b.Gesture.ToString()));
         closeButton.SelectedItem = closeButton.Items.Cast<ComboBoxItem>().First(i => (TabCloseButton)i.Tag == settings.Mouse.CloseTabButton); Validate();
+        bookmarkButton.SelectedItem = bookmarkButton.Items.Cast<ComboBoxItem>().First(i => (TabCloseButton)i.Tag == settings.Mouse.OpenBookmarkInNewTabButton); Validate();
     }
-    private InputSettings Read() => new(new ShortcutMap(fields.ToDictionary(pair => pair.Key, pair => pair.Value.Text.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))), new((TabCloseButton)((ComboBoxItem)closeButton.SelectedItem).Tag),
+    private InputSettings Read() => new(new ShortcutMap(fields.ToDictionary(pair => pair.Key, pair => pair.Value.Text.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))), new((TabCloseButton)((ComboBoxItem)closeButton.SelectedItem).Tag, (TabCloseButton)((ComboBoxItem)bookmarkButton.SelectedItem).Tag),
         QuickLookSettings.FromJson(System.Text.Json.JsonSerializer.Serialize(new { version = 1, executablePath = string.IsNullOrWhiteSpace(quickLookPath.Text) ? null : quickLookPath.Text.Trim() })));
     private void Validate()
     {
-        if (closeButton.SelectedItem == null) { save.IsEnabled = false; return; }
+        if (closeButton.SelectedItem == null || bookmarkButton.SelectedItem == null) { save.IsEnabled = false; return; }
         try { Read(); error.Text = ""; save.IsEnabled = true; }
         catch (FormatException ex) { error.Text = ex.Message; save.IsEnabled = false; }
     }

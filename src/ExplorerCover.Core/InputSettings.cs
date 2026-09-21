@@ -22,6 +22,6 @@ public sealed record InputSettings(ShortcutMap Shortcuts, MouseSettings Mouse, Q
         version = 1,
         quickLook = QuickLook == null ? null : new { version = 1, executablePath = QuickLook.ExecutablePath },
         shortcuts = JsonSerializer.Deserialize<JsonElement>(ShortcutJson(Shortcuts)),
-        mouse = new { version = 1, closeTabButton = Mouse.CloseTabButton switch { TabCloseButton.None => "none", TabCloseButton.Middle => "middle", TabCloseButton.Right => "right", TabCloseButton.XButton1 => "xButton1", TabCloseButton.XButton2 => "xButton2", _ => throw new FormatException("未対応のマウスボタンです。") } }
+        mouse = new { version = 1, closeTabButton = MouseSettings.ButtonName(Mouse.CloseTabButton), openBookmarkInNewTabButton = MouseSettings.ButtonName(Mouse.OpenBookmarkInNewTabButton) }
     }, new JsonSerializerOptions { WriteIndented = true });
 }

@@ -85,7 +85,8 @@ public sealed class MainWindow : Window
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(State.Sidebar.Width), MinWidth = 160, MaxWidth = 380 });
         layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(5) });
         layout.ColumnDefinitions.Add(new ColumnDefinition());
-        sidebar = new(State, path => ViewFor(State.ActivePane).Navigate(path), restored == null);
+        sidebar = new(State, path => ViewFor(State.ActivePane).Navigate(path), restored == null,
+            path => ViewFor(State.ActivePane).OpenInNewTab(path), this.mouseSettings);
         layout.Children.Add(sidebar);
         var sidebarSplitter = new GridSplitter { Width = 5, HorizontalAlignment = HorizontalAlignment.Stretch, Background = Brushes.LightGray, ResizeDirection = GridResizeDirection.Columns, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
         System.Windows.Automation.AutomationProperties.SetAutomationId(sidebarSplitter, "Sidebar.Splitter");
@@ -144,6 +145,7 @@ public sealed class MainWindow : Window
     {
         shortcuts.ApplyJson(InputSettings.ShortcutJson(settings.Shortcuts));
         mouseSettings = settings.Mouse; left.ApplyMouseSettings(mouseSettings); right.ApplyMouseSettings(mouseSettings);
+        sidebar.ApplyMouseSettings(mouseSettings);
         quickLookSettings = settings.QuickLook ?? new(); quickLook = new(quickLookSettings);
     }
     private BrowserPane? NativeFocusedPane => left.Browser.ContainsNativeFocus ? left : right.Browser.ContainsNativeFocus ? right : null;
