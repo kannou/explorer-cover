@@ -4,6 +4,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using ExplorerCover.Core;
 using ExplorerCover.Shell;
 using ExplorerCover.Commands;
@@ -42,6 +43,7 @@ public sealed class MainWindow : Window
         this.mouseSettings = mouseSettings ?? new();
         this.quickLookSettings = quickLookSettings ?? new();
         quickLook = new(this.quickLookSettings);
+        Icon = new BitmapImage(new Uri("pack://application:,,,/Assets/app-icon.png", UriKind.Absolute));
         previewSelection = new(() => previewTracking && !previewPending && IsActive && !lifetime.IsCancellationRequested,
             RefreshPreviewSelectionAsync);
         Activated += (_, _) => previewSelection.Request();
