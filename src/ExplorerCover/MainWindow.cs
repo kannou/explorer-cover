@@ -27,8 +27,7 @@ public sealed class MainWindow : Window
     private readonly CancellationTokenSource lifetime = new();
     private bool previewPending;
     private int previewKey = 0x20;
-    private readonly System.Windows.Threading.DispatcherTimer previewSelectionTimer;
-    private Task selectionUpdate = Task.CompletedTask;
+    private readonly SelectionRefreshScheduler previewSelection;
     private bool previewTracking;
     private string? lastPreviewSelection;
     public WorkspaceState State { get; }
@@ -43,9 +42,9 @@ public sealed class MainWindow : Window
         this.mouseSettings = mouseSettings ?? new();
         this.quickLookSettings = quickLookSettings ?? new();
         quickLook = new(this.quickLookSettings);
-        previewSelectionTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
-        previewSelectionTimer.Tick += PreviewSelectionChanged;
-        previewSelectionTimer.Start();
+        previewSelection = new(() => previewTracking && !previewPending && IsActive && !lifetime.IsCancellationRequested,
+            RefreshPreviewSelectionAsync);
+        Activated += (_, _) => previewSelection.Request();
         Title = ProductInfo.Name;
         Width = Math.Min(1400, SystemParameters.WorkArea.Width); Height = 740; MinWidth = 900; MinHeight = 380;
         FontFamily = new FontFamily("Yu Gothic UI"); FontSize = 13;
@@ -96,8 +95,10 @@ public sealed class MainWindow : Window
         Grid.SetColumn(sidebarSplitter, 1); layout.Children.Add(sidebarSplitter);
         Grid.SetColumn(grid, 2); layout.Children.Add(grid);
         root.Children.Add(layout); Content = root;
-        left.Activated += () => State.Activate(State.Left);
-        right.Activated += () => State.Activate(State.Right);
+        left.Activated += () => { State.Activate(State.Left); previewSelection.Request(); };
+        right.Activated += () => { State.Activate(State.Right); previewSelection.Request(); };
+        left.SelectionChanged += previewSelection.Request;
+        right.SelectionChanged += previewSelection.Request;
         State.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(WorkspaceState.ActivePane)) UpdateActivePane(); };
         commands.Register(CommandIds.FocusAddress, pane => { State.Activate(pane); ViewFor(pane).FocusAddress(); });
         commands.Register(CommandIds.FocusFiles, pane => { State.Activate(pane); ViewFor(pane).FocusFiles(); });
@@ -166,8 +167,9 @@ public sealed class MainWindow : Window
         {
             shellDialogFocus?.Dispose();
             lifetime.Cancel();
-            previewSelectionTimer.Stop();
-            previewSelectionTimer.Tick -= PreviewSelectionChanged;
+            previewSelection.Dispose();
+            left.SelectionChanged -= previewSelection.Request;
+            right.SelectionChanged -= previewSelection.Request;
             ComponentDispatcher.ThreadFilterMessage -= FilterMessage;
             shortcuts.Changed -= UpdateHelp;
             sidebar.Dispose(); left.Dispose(); right.Dispose();
@@ -203,7 +205,7 @@ public sealed class MainWindow : Window
         try
         {
             // 更新要求がToggleの後に到着して閉じる操作を邪魔しないよう、順序を保つ。
-            await selectionUpdate;
+            await previewSelection.Pending;
             // キーを離すまで表示しない。リピートがQuickLook側へ流れるのを防ぐ。
             while (Native.GetAsyncKeyState(key) < 0)
             {
@@ -223,20 +225,20 @@ public sealed class MainWindow : Window
             if (!lifetime.IsCancellationRequested && pane.State.SelectedTab == tab && tab.CurrentPath == currentPath)
                 pane.ShowOperationMessage($"QuickLookを開けません: {ex.Message}");
         }
-        finally { previewPending = false; }
+        finally { previewPending = false; previewSelection.Request(); }
     }
 
-    private void PreviewSelectionChanged(object? sender, EventArgs e)
+    private Task RefreshPreviewSelectionAsync()
     {
-        if (!previewTracking || previewPending || !selectionUpdate.IsCompleted || !IsActive || lifetime.IsCancellationRequested) return;
         var pane = NativeFocusedPane;
-        if (pane == null || !pane.CanNavigate || Native.IsEditingText() || Native.IsComposingText()) return;
+        if (pane == null || !pane.CanNavigate || Native.IsEditingText() || Native.IsComposingText()) return Task.CompletedTask;
+        DiagnosticLog.Write("QuickLook selection evaluated");
         var path = pane.Browser.GetSingleSelectedFile();
-        if (path == lastPreviewSelection) return;
+        if (path == lastPreviewSelection) return Task.CompletedTask;
         lastPreviewSelection = path;
-        if (path == null) return; // 未選択・複数選択・フォルダーでは現在の表示を維持する。
+        if (path == null) return Task.CompletedTask; // 未選択・複数選択・フォルダーでは現在の表示を維持する。
         var tab = pane.State.SelectedTab;
-        selectionUpdate = UpdatePreviewSelectionAsync(pane, tab, path);
+        return UpdatePreviewSelectionAsync(pane, tab, path);
     }
 
     private async Task UpdatePreviewSelectionAsync(BrowserPane pane, TabState tab, string path)
@@ -251,7 +253,7 @@ public sealed class MainWindow : Window
         finally
         {
             // フォーカス移動等で送信を取り消した場合は、一覧に戻った時に再評価する。
-            if (!StillCurrent()) lastPreviewSelection = null;
+            if (!StillCurrent()) { lastPreviewSelection = null; previewSelection.Request(); }
         }
     }
 
@@ -270,6 +272,10 @@ public sealed class MainWindow : Window
 
     private void FilterMessage(ref MSG msg, ref bool handled)
     {
+        // 編集終了やクリック後にも再評価する。編集・IME中に保留した選択を拾い直す。
+        if ((msg.message is 0x202 or 0x205 or 0x10E || // WM_LBUTTONUP / WM_RBUTTONUP / WM_IME_ENDCOMPOSITION
+            (msg.message is 0x101 or 0x105 && (int)msg.wParam is 0x0D or 0x1B or 0x71)) && NativeFocusedPane != null)
+            previewSelection.Request();
         if (msg.message is 0x100 or 0x104 or 0x201 or 0x204) // キー、左右ボタンの押下
         {
             foreach (var pane in new[] { left, right })

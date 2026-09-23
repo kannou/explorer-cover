@@ -20,6 +20,7 @@ public sealed class ExplorerHost : HwndHost
     private long requestVersion;
     private bool shellNavigating;
     private bool submitting;
+    private System.Windows.Threading.DispatcherOperation? selectionNotification;
     private readonly Func<string, CancellationToken, Task<byte[]>> resolvePath;
     private readonly TimeSpan preparationTimeout;
     public bool CanNavigate => browser != null && !shellNavigating;
@@ -29,6 +30,7 @@ public sealed class ExplorerHost : HwndHost
     public event Action<string>? Navigated;
     public event Action<string>? Error;
     public event Action? Activated;
+    public event Action? SelectionChanged;
     public event Action? NativeNavigationRequested;
 
     public ExplorerHost(string initialPath) : this(initialPath, ShellPathResolver.ResolveAsync, TimeSpan.FromSeconds(15)) { }
@@ -171,6 +173,16 @@ public sealed class ExplorerHost : HwndHost
         return 0;
     }
     internal void NotifyActivated() => Dispatcher.BeginInvoke(() => Activated?.Invoke());
+    internal void NotifySelectionChanged()
+    {
+        if (browser == null || selectionNotification != null) return;
+        // COMの通知中に選択を読み直さず、連続通知もDispatcher上の一回にまとめる。
+        selectionNotification = Dispatcher.BeginInvoke(() =>
+        {
+            selectionNotification = null;
+            if (browser != null) SelectionChanged?.Invoke();
+        });
+    }
     public bool ContainsNativeFocus => child != 0 && (Native.GetFocus() == child || Native.IsChild(child, Native.GetFocus()));
 
     private IShellView? GetView()
@@ -298,6 +310,7 @@ public sealed class ExplorerHost : HwndHost
     private void ReleaseBrowser()
     {
         ++requestVersion; preparation?.Cancel();
+        selectionNotification?.Abort(); selectionNotification = null;
         if (browser == null) return;
         DiagnosticLog.Write("Destroying ExplorerBrowser");
         // 1つの解除が失敗しても残りのネイティブ資源を解放する。
@@ -332,6 +345,11 @@ public sealed class BrowserSite(ExplorerHost owner) : IExplorerBrowserEvents, IS
         return 0;
     }
     public int OnDefaultCommand(nint view) => 1; // 標準の開く動作に任せる
-    public int OnStateChange(nint view, uint change) { if (change == 0) owner.NotifyActivated(); return 0; } // CDBOSC_SETFOCUS
+    public int OnStateChange(nint view, uint change)
+    {
+        if (change == 0) owner.NotifyActivated(); // CDBOSC_SETFOCUS
+        if (change is 2 or 3 or 4) owner.NotifySelectionChanged(); // SELCHANGE / RENAME / STATECHANGE
+        return 0;
+    }
     public int IncludeObject(nint view, nint pidl) => 0;
 }

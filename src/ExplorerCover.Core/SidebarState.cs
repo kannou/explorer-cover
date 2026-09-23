@@ -20,6 +20,7 @@ public sealed class BookmarkState(string name, string path) : ObservableState
 public sealed class SidebarState : ObservableState
 {
     private readonly ObservableCollection<BookmarkState> bookmarks = [];
+    private readonly Dictionary<LocationKey, BookmarkState> byLocation = [];
     public ReadOnlyObservableCollection<BookmarkState> Bookmarks { get; }
     private double width = 280;
     public double Width
@@ -36,13 +37,22 @@ public sealed class SidebarState : ObservableState
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        var existing = bookmarks.FirstOrDefault(b => NavigationHistory.SameLocation(b.Path, path));
-        if (existing != null) return existing;
+        var key = LocationKey.Create(path);
+        if (byLocation.TryGetValue(key, out var existing)) return existing;
         var bookmark = new BookmarkState(name.Trim(), path);
+        // コレクションの通知先から検索されても一致するよう、通知前に索引を更新する。
+        byLocation.Add(key, bookmark);
         bookmarks.Add(bookmark);
         return bookmark;
     }
-    public bool Remove(BookmarkState bookmark) => bookmarks.Remove(bookmark);
+    public bool Remove(BookmarkState bookmark)
+    {
+        if (bookmark == null) return false;
+        var key = LocationKey.Create(bookmark.Path);
+        if (!byLocation.TryGetValue(key, out var existing) || !ReferenceEquals(existing, bookmark)) return false;
+        byLocation.Remove(key);
+        return bookmarks.Remove(bookmark);
+    }
 }
 
 public enum DriveAvailability { Ready, Unavailable, Unknown }

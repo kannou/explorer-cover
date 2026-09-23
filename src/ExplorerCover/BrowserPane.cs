@@ -34,6 +34,7 @@ public sealed class BrowserPane : Grid, IDisposable
     private string? operationMessage;
     public void ShowOperationMessage(string? message) { operationMessage = message; UpdateStatus(); }
     public event Action? Activated;
+    public event Action? SelectionChanged;
     public void ApplyMouseSettings(MouseSettings settings) => tabs.ApplySettings(settings);
 
     public BrowserPane(string label, PaneState state, CommandDispatcher commands, MouseSettings mouseSettings)
@@ -111,10 +112,11 @@ public sealed class BrowserPane : Grid, IDisposable
         host.Error += message => { if (!disposed && views.ContainsKey(tab)) { if (focusAfterNavigation == tab) focusAfterNavigation = null; navigation.Fail(message); } };
         host.NavigationStateChanged += () =>
         {
-            if (!disposed && State.SelectedTab == tab) UpdateStatus();
+            if (!disposed && State.SelectedTab == tab) { UpdateStatus(); SelectionChanged?.Invoke(); }
             CommandManager.InvalidateRequerySuggested();
         };
         host.Activated += () => { if (!disposed && State.SelectedTab == tab && host.ContainsNativeFocus) Activated?.Invoke(); };
+        host.SelectionChanged += () => { if (!disposed && State.SelectedTab == tab) SelectionChanged?.Invoke(); };
         tab.PropertyChanged += TabChanged;
         UpdateTabHeader(tab);
     }
@@ -137,6 +139,7 @@ public sealed class BrowserPane : Grid, IDisposable
         Address.SetBinding(TextBox.TextProperty, new Binding(nameof(TabState.AddressText)) { Source = State.SelectedTab, Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
         tabs.Reveal(State.SelectedTab);
         UpdateStatus();
+        SelectionChanged?.Invoke();
     }
 
     private void UpdateTabHeader(TabState tab)

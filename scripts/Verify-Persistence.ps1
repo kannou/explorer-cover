@@ -104,6 +104,15 @@ function Close-App {
  $script:window=$null
 }
 function Saved { Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json }
+function SnapshotCount { @(Select-String -LiteralPath $log -Pattern 'Workspace snapshot captured').Count }
+function Assert-SnapshotIdle([string]$phase) {
+ Start-Sleep -Milliseconds 1400
+ $before=SnapshotCount
+ Assert ($before -gt 0) '初回の保存準備が記録されていません'
+ Start-Sleep -Milliseconds 2200
+ Assert ((SnapshotCount) -eq $before) ($phase+'に状態全体の保存準備を繰り返しました')
+ Write-Output ('PASS: '+$phase+'はスナップショット・JSONを生成しない')
+}
 try {
  Start-App
  At '左' $b; At '右' $right
@@ -113,6 +122,7 @@ try {
  Start-Sleep -Seconds 1
  Assert (@(Select-String -LiteralPath $log -Pattern 'Creating ExplorerBrowser').Count -eq 2) '非選択のWSLタブを先に読み込んだ'
  'PASS: タブ順・選択・アクティブ右ペイン・空ブックマークを復元し、非選択タブは未読込'
+ Assert-SnapshotIdle '無操作時'
  (Find '左Address').SetFocus(); Invoke 'Sidebar.AddBookmark'
  $sideRect=(Find 'Sidebar.Splitter').Current.BoundingRectangle
  [TabInput]::Drag([int]($sideRect.X+2),[int]($sideRect.Y+100),[int]($sideRect.X+42),[int]($sideRect.Y+100))
@@ -128,6 +138,7 @@ try {
  Assert ($before.sidebarWidth -gt 320) 'サイドビュー幅を保存していない'
  Assert ([Math]::Abs($before.leftPaneRatio-0.6) -gt 0.02) 'ペイン比率を保存していない'
  (Value '左').SetValue('これは未確定の入力')
+ Assert-SnapshotIdle 'パス入力の編集中'
  Close-App
  $closed=Saved
  Assert ($closed.left.paths[1] -eq $missing) '到達不能な保存パスを失った'
@@ -163,6 +174,9 @@ try {
   $no.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
   Assert (!$app.HasExited) '保存失敗後に終了を取り消せなかった'
  } finally { $lock.Dispose() }
+ Wait-Until {(Saved).right.paths[0] -eq $right}
+ Wait-Until {@((Elements) | Where-Object {$_.Current.Name -like '作業状態を保存できません:*'}).Count -eq 0}
+ 'PASS: 保存先の復旧後は追加操作なしで自動再試行し、警告を消す'
  Close-App
  Assert ((Saved).right.paths[0] -eq $right) '保存失敗後に再試行できなかった'
  'PASS: 保存先の置換失敗を通知し、終了を取り消して再保存できる'
