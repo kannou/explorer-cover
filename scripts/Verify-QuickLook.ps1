@@ -84,6 +84,16 @@ function PreviewWindow {
   Where-Object { $_.Current.ProcessId -in @(Get-Process QuickLook -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) -and $_.Current.Name -like '*日本語 quick view*' } | Select-Object -First 1
 }
 function RequestCount { @(Select-String -LiteralPath $log -Pattern 'QuickLook request sent').Count }
+function EvaluationCount { @(Select-String -LiteralPath $log -Pattern 'QuickLook selection evaluated').Count }
+function Assert-SelectionIdle([string]$phase) {
+ Start-Sleep -Milliseconds 600
+ Assert ([TabInput]::ForegroundProcess() -eq $app.Id) '無操作検証中にアプリが前面にありません'
+ $before=EvaluationCount
+ Start-Sleep -Milliseconds 1200
+ Assert ([TabInput]::ForegroundProcess() -eq $app.Id) '無操作検証中に別のアプリへ移りました'
+ Assert ((EvaluationCount) -eq $before) ($phase+'に通知なしで選択確認を繰り返しました')
+ Write-Output ('PASS: '+$phase+'の無操作時に選択確認を繰り返さない')
+}
 function SampleItem { (Elements) | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem -and $_.Current.Name -eq '日本語 quick view.txt' } | Select-Object -First 1 }
 try {
  Wait-Until {
@@ -129,11 +139,14 @@ try {
   Assert ($null -ne (PreviewWindow)) '二重トグルによりプレビューが閉じた'
   Assert ((RequestCount) -eq 1) 'プレビュー要求が重複した'
   'PASS: 日本語・空白パスをQuickLookで表示、二重トグルなし'
+  [TabInput]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle) | Out-Null
+  (SampleItem).SetFocus()
+  Assert-SelectionIdle 'プレビュー表示中'
   $alternate=Join-Path $left '日本語 quick view 2.txt'
   Set-Content -LiteralPath $alternate 'Another preview content' -Encoding utf8
   Wait-Until { $null -ne ((Elements) | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem -and $_.Current.Name -eq '日本語 quick view 2.txt' } | Select-Object -First 1) }
   $item2=(Elements) | Where-Object { $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem -and $_.Current.Name -eq '日本語 quick view 2.txt' } | Select-Object -First 1
-  $item2.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select(); $item2.SetFocus()
+  $item2.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
   Wait-Until { $null -ne (PreviewWindow) -and (PreviewWindow).Current.Name -like '*日本語 quick view 2.txt*' }
   Assert ((RequestCount) -eq 1) '選択変更でToggleを送った'
   Press @(0x28)
@@ -155,6 +168,7 @@ try {
   $item2.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select(); $item2.SetFocus()
   Start-Sleep -Milliseconds 600
   Assert ($null -eq (PreviewWindow)) '閉じたプレビューが選択変更で再表示された'
+  Assert-SelectionIdle 'プレビュー終了後'
   $original.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select(); $original.SetFocus()
   Start-Sleep -Milliseconds 300
   'PASS: 閉じた後は選択を変えても再表示しない'
