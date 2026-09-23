@@ -125,6 +125,9 @@ try {
  $transform=$window.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern)
  $transform.Resize(1000,650); $transform.Move($work.Left+45,$work.Top+55)
  Wait-Until {(Saved).window.width -eq 1000 -and (Saved).window.height -eq 650}
+ $transform.Move($work.Left+85,$work.Top+95)
+ Wait-Until {(Saved).window.left -eq $work.Left+85 -and (Saved).window.top -eq $work.Top+95}
+ 'PASS: サイズを変えずに位置だけを移動しても自動保存'
  $normal=(Saved).window
  Close-App; Start-App; At '左' $a
  Wait-Until {BoundsMatch $normal}

@@ -17,6 +17,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="ExplorerCover.Navigation.Tests" />
     <InternalsVisibleTo Include="ExplorerCover.Selection.Tests" />
+    <InternalsVisibleTo Include="ExplorerCover.Persistence.Tests" />
     <ProjectReference Include="..\ExplorerCover.Core\ExplorerCover.Core.csproj" />
   </ItemGroup>
 </Project>

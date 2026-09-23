@@ -479,5 +479,70 @@ Check("ブックマークの新規タブ設定は旧形式を読み込み、独�
         Throws<FormatException>(() => MouseSettings.FromJson("{\"version\":1,\"openBookmarkInNewTabButton\":" + value + "}"));
     Throws<FormatException>(() => MouseSettings.FromJson("{\"version\":1,\"openBookmarkInNewTabButton\":\"right\",\"openBookmarkInNewTabButton\":\"middle\"}"));
 });
+Check("保存対象の変更を左右のタブ・ペイン・幅・ブックマークから通知する", () =>
+{
+    var state = new WorkspaceState(@"C:\left", @"C:\right");
+    using var changes = new WorkspaceChangeTracker(state);
+    var notifications = 0;
+    changes.Changed += () => notifications++;
+    void Changed(Action action)
+    {
+        var before = notifications; action(); Equal(true, notifications > before);
+    }
+    Changed(() => state.Activate(state.Right));
+    Changed(() => state.LeftPaneRatio = 0.6);
+    Changed(() => state.Sidebar.Width = 300);
+    Changed(() => state.Left.SelectedTab.NavigationSucceeded(@"C:\left\child"));
+    Changed(() => state.Right.SelectedTab.NavigationSucceeded(@"C:\right\child"));
+    TabState added = null!;
+    Changed(() => added = state.Left.AddTab(@"C:\extra"));
+    Changed(() => added.NavigationSucceeded(@"C:\extra\child"));
+    Changed(() => state.Left.SelectTab(added));
+    Changed(() => state.Left.MoveTab(added, 0));
+    Changed(() => state.Left.CloseTab(added));
+    var rightAdded = state.Right.AddTab(@"C:\other");
+    Changed(() => state.Right.SelectTab(rightAdded));
+    Changed(() => state.Right.MoveTab(rightAdded, 0));
+    Changed(() => state.Right.CloseTab(rightAdded));
+    BookmarkState bookmark = null!;
+    Changed(() => bookmark = state.Sidebar.Add("登録", @"C:\saved"));
+    Changed(() => bookmark.Rename("変更後"));
+    Changed(() => state.Sidebar.Remove(bookmark));
+});
+Check("編集中のパス・移動エラー・同じ値の代入は保存を予約しない", () =>
+{
+    var state = new WorkspaceState(@"C:\left", @"C:\right");
+    var bookmark = state.Sidebar.Add("登録", @"C:\saved");
+    using var changes = new WorkspaceChangeTracker(state);
+    var notifications = 0;
+    changes.Changed += () => notifications++;
+    state.Left.SelectedTab.AddressText = @"C:\editing";
+    state.Left.SelectedTab.NavigationFailed("移動できません");
+    state.Left.SelectedTab.CancelAddressEdit();
+    state.Activate(state.Left); state.LeftPaneRatio = 0.5; state.Sidebar.Width = 280;
+    bookmark.Rename("登録"); state.Sidebar.Add("重複", @"C:\saved");
+    Equal(0, notifications);
+});
+Check("既存項目も監視し、削除した項目と監視終了後の変更は通知しない", () =>
+{
+    var state = new WorkspaceState(@"C:\left", @"C:\right");
+    var tab = state.Left.AddTab(@"C:\extra");
+    var bookmark = state.Sidebar.Add("登録", @"C:\saved");
+    using var changes = new WorkspaceChangeTracker(state);
+    var notifications = 0;
+    changes.Changed += () => notifications++;
+    tab.NavigationSucceeded(@"C:\extra\child"); bookmark.Rename("変更後");
+    Equal(2, notifications);
+    state.Left.CloseTab(tab); state.Sidebar.Remove(bookmark);
+    notifications = 0;
+    tab.NavigationSucceeded(@"C:\removed"); bookmark.Rename("削除後");
+    Equal(0, notifications);
+    changes.Dispose();
+    state.Activate(state.Right); state.LeftPaneRatio = 0.7; state.Sidebar.Width = 320;
+    state.Left.SelectedTab.NavigationSucceeded(@"C:\unwatched");
+    state.Left.AddTab(@"C:\new").NavigationSucceeded(@"C:\new\child");
+    state.Sidebar.Add("追加後", @"C:\new").Rename("終了後");
+    Equal(0, notifications);
+});
 Console.WriteLine($"{count - failures.Count}/{count} passed");
 return failures.Count == 0 ? 0 : 1;
