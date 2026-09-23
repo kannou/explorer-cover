@@ -27,7 +27,7 @@ try {
     New-Item -ItemType Directory -Force -Path $dist | Out-Null
     $lock = [IO.File]::Open((Join-Path $dist 'publish.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
     Assert-Closed
-    & $sdk publish (Join-Path $root 'src\ExplorerCover\explorer-cover.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false --source https://api.nuget.org/v3/index.json -o $staging --nologo
+    & $sdk publish (Join-Path $root 'src\ExplorerCover\explorer-cover.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:SatelliteResourceLanguages=ja --source https://api.nuget.org/v3/index.json -o $staging --nologo
     if ($LASTEXITCODE -ne 0) { throw "発行に失敗しました。現在の通常版は変更していません。出力: $staging" }
     foreach ($file in @('explorer-cover.exe','explorer-cover.dll','coreclr.dll','hostfxr.dll','PresentationFramework.dll')) {
         if (!(Test-Path -LiteralPath (Join-Path $staging $file))) { throw "発行ファイルが不足しています: $file" }
