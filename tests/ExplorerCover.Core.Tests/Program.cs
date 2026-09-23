@@ -318,6 +318,140 @@ Check("ブックマークの登録・重複防止・改名・削除と幅の検�
     Equal(75d, new DriveSnapshot("C", "C", 100, 25).UsedPercent);
     Equal(0d, new DriveSnapshot("C", "C", 0, 0).UsedPercent);
 });
+Check("場所の比較とブックマーク索引はローカル・UNC・WSLの表記規則を維持する", () =>
+{
+    // 同じ行は同一の場所。行が違えば別の場所として扱う。
+    string[][] groups = [
+        [@"C:\Work", "c:/work///", @"C:\WORK\"],
+        [@"C:\", "c:", "C:////"],
+        [@"\\?\C:\Work", @"\\?\c:\work\"],
+        [@"\\server\share\Folder", "//SERVER/SHARE/folder/"],
+        [@"\\?\UNC\server\share\Folder", @"\\?\unc\SERVER\SHARE\folder\"],
+        [@"\\wsl.localhost\Ubuntu\home\Case", @"\\WSL$\ubuntu\home\Case\", "//wsl.localhost/UBUNTU/home/Case/", @"\\?\uNc\WsL$\Ubuntu\home\Case"],
+        [@"\\wsl.localhost\Ubuntu\home\case", @"\\wsl$\ubuntu\home\case"],
+        [@"\\wsl.localhost\Debian\home\Case", @"\\wsl$\DEBIAN\home\Case"],
+        [@"\\wsl.localhost\Ubuntu", @"\\wsl$\ubuntu\", @"\\?\UNC\WSL$\UBUNTU\"],
+        [@"\\wsl.localhost", @"\\WSL.LOCALHOST\"],
+        [@"\\wsl$", @"\\WSL$\"],
+        [@"C:\日本語\資料", "c:/日本語/資料/"],
+        [@"C:\I", @"c:\i"],
+        [@"relative\Path", "RELATIVE/path/"],
+        [@"relative\.\Path"],
+        [@"relative\other\..\Path"],
+        [@"C:\Work "]
+    ];
+    foreach (var culture in new[] { "en-US", "tr-TR" })
+    {
+        var previous = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new(culture);
+            for (var i = 0; i < groups.Length; i++)
+            for (var j = 0; j < groups.Length; j++)
+            foreach (var a in groups[i])
+            foreach (var b in groups[j])
+            {
+                Equal(i == j, NavigationHistory.SameLocation(a, b));
+                var sidebar = new SidebarState();
+                var first = sidebar.Add("最初", a); var second = sidebar.Add("後から", b);
+                Equal(i == j, ReferenceEquals(first, second));
+                Equal(i == j ? 1 : 2, sidebar.Bookmarks.Count);
+                Equal("最初", first.Name); Equal(a, first.Path);
+            }
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = previous; }
+    }
+});
+Check("改名・重複追加で元の登録を保ち、削除後の同じ場所は末尾に再登録する", () =>
+{
+    var sidebar = new SidebarState();
+    var first = sidebar.Add("最初", @"\\wsl$\Ubuntu\home\Case");
+    var second = sidebar.Add("次", @"C:\next");
+    first.Rename("変更後");
+    Equal(first, sidebar.Add("別名", @"\\wsl.localhost\ubuntu\home\Case\"));
+    Equal("変更後", first.Name); Equal(@"\\wsl$\Ubuntu\home\Case", first.Path);
+    Equal(false, sidebar.Remove(new BookmarkState("別オブジェクト", first.Path)));
+    Equal(first, sidebar.Add("索引を保持", first.Path));
+    Equal(true, sidebar.Remove(first)); Equal(false, sidebar.Remove(first));
+    var replacement = sidebar.Add("再登録", @"\\wsl.localhost\Ubuntu\home\Case");
+    Equal(false, first.Id == replacement.Id);
+    Equal(second, sidebar.Bookmarks[0]); Equal(replacement, sidebar.Bookmarks[1]);
+    Equal(false, sidebar.Remove(first));
+    Equal(replacement, sidebar.Add("旧表記", first.Path));
+    Equal(true, sidebar.Remove(second)); Equal(true, sidebar.Remove(replacement));
+    Equal(0, sidebar.Bookmarks.Count);
+    Equal("空から追加", sidebar.Add("空から追加", first.Path).Name);
+});
+Check("コレクション通知中も索引を同期し、重複登録は通知しない", () =>
+{
+    var sidebar = new SidebarState();
+    var actions = new List<System.Collections.Specialized.NotifyCollectionChangedAction>();
+    BookmarkState? replacement = null;
+    ((System.Collections.Specialized.INotifyCollectionChanged)sidebar.Bookmarks).CollectionChanged += (_, e) =>
+    {
+        actions.Add(e.Action);
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
+        {
+            var added = (BookmarkState)e.NewItems![0]!;
+            Equal(added, sidebar.Add("通知中の重複", added.Path));
+        }
+        else if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Remove)
+            replacement = sidebar.Add("通知中の再登録", ((BookmarkState)e.OldItems![0]!).Path);
+    };
+    var first = sidebar.Add("最初", @"C:\work");
+    sidebar.Add("重複", "c:/WORK/");
+    Equal(true, sidebar.Remove(first));
+    Equal(1, sidebar.Bookmarks.Count); Equal(replacement, sidebar.Bookmarks[0]);
+    Equal(replacement, sidebar.Add("索引の確認", first.Path));
+    Equal("Add,Remove,Add", string.Join(',', actions));
+});
+Check("無効な登録は一覧と索引を変更しない", () =>
+{
+    var sidebar = new SidebarState();
+    var first = sidebar.Add("登録済み", @"C:\work");
+    Throws<ArgumentException>(() => sidebar.Add(" ", first.Path));
+    Throws<ArgumentException>(() => sidebar.Add("追加", " "));
+    Throws<ArgumentNullException>(() => sidebar.Add(null!, first.Path));
+    Throws<ArgumentNullException>(() => sidebar.Add("追加", null!));
+    Equal(false, sidebar.Remove(null!));
+    Equal(first, sidebar.Add("重複", "c:/work/")); Equal(1, sidebar.Bookmarks.Count);
+});
+Check("重複を含む保存状態は最初の名前・パス・順序を維持して復元する", () =>
+{
+    BookmarkSnapshot[] bookmarks = [
+        new("最初", @"C:\Work"), new("重複", "c:/work/"),
+        new("大文字", @"\\wsl$\Ubuntu\home\Case"), new("別名", @"\\?\UNC\wsl.localhost\ubuntu\home\Case\"),
+        new("小文字", @"\\wsl.localhost\Ubuntu\home\case"), new("末尾", @"C:\last")
+    ];
+    var snapshot = WorkspaceSnapshot.Capture(new WorkspaceState(@"C:\left", @"C:\right")) with { Bookmarks = bookmarks };
+    var state = WorkspaceSnapshot.FromJson(snapshot.ToJson()).Restore();
+    Equal(true, new[] { bookmarks[0], bookmarks[2], bookmarks[4], bookmarks[5] }.SequenceEqual(WorkspaceSnapshot.Capture(state).Bookmarks));
+    Equal(state.Sidebar.Bookmarks[1], state.Sidebar.Add("復元後の重複", @"\\wsl.localhost\Ubuntu\home\Case"));
+    state.Sidebar.Remove(state.Sidebar.Bookmarks[1]);
+    var added = state.Sidebar.Add("再登録", bookmarks[3].Path);
+    Equal(added, state.Sidebar.Bookmarks[^1]); Equal(4, state.Sidebar.Bookmarks.Count);
+});
+Check("保存上限4096件の索引を復元し、全件の重複判定と削除後の登録を維持する", () =>
+{
+    var bookmarks = Enumerable.Range(0, 4096).Select(i => new BookmarkSnapshot($"項目{i}",
+        i % 2 == 0 ? $@"C:\資料\Folder-{i}" : $@"\\wsl.localhost\Ubuntu\home\Folder-{i}")).ToArray();
+    var snapshot = WorkspaceSnapshot.Capture(new WorkspaceState(@"C:\left", @"C:\right")) with { Bookmarks = bookmarks };
+    var state = WorkspaceSnapshot.FromJson(snapshot.ToJson()).Restore();
+    for (var i = 0; i < bookmarks.Length; i++)
+    {
+        var alias = i % 2 == 0 ? bookmarks[i].Path.ToUpperInvariant() : bookmarks[i].Path.Replace("wsl.localhost\\Ubuntu", "WSL$\\ubuntu");
+        Equal(state.Sidebar.Bookmarks[i], state.Sidebar.Add("重複", alias.Replace('\\', '/') + '/'));
+    }
+    Equal(true, bookmarks.SequenceEqual(WorkspaceSnapshot.Capture(state).Bookmarks));
+    foreach (var i in new[] { 0, 2048, 4095 })
+    {
+        var old = state.Sidebar.Add("検索", bookmarks[i].Path);
+        Equal(true, state.Sidebar.Remove(old));
+        var added = state.Sidebar.Add("再登録", bookmarks[i].Path);
+        Equal(false, old.Id == added.Id); Equal(added, state.Sidebar.Bookmarks[^1]);
+    }
+    Equal(4096, WorkspaceSnapshot.FromJson(WorkspaceSnapshot.Capture(state).ToJson()).Restore().Sidebar.Bookmarks.Count);
+});
 Check("容量取得はドライブごとに独立し重複要求・切断後の古い結果を防ぐ", () =>
 {
     string[] paths = ["slow", "fast"];

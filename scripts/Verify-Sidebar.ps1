@@ -81,6 +81,7 @@ function Assert([bool]$value,[string]$message) { if (!$value) { throw $message }
 $oldConfig=$env:EXPLORER_COVER_SHORTCUTS; $oldLog=$env:EXPLORER_COVER_LOG
 $settings=Join-Path $trial 'keys.json'; Set-Content $settings '{"version":1,"bindings":{}}' -Encoding utf8
 $env:EXPLORER_COVER_SHORTCUTS=$settings; $log=Join-Path $trial 'app.log'; $env:EXPLORER_COVER_LOG=$log
+$oldState=$env:EXPLORER_COVER_STATE; $env:EXPLORER_COVER_STATE=Join-Path $trial 'workspace.json'
 $dll=Join-Path $root 'src\ExplorerCover\bin\Release\net10.0-windows\explorer-cover.dll'
 $app=Start-Process (Join-Path $root '.tools\dotnet\dotnet.exe') -ArgumentList @(('"'+$dll+'"'),('"'+$left+'"'),('"'+$right+'"')) -WindowStyle Hidden -PassThru
 $script:window=$null
@@ -150,6 +151,10 @@ try {
  Wait-Until { $null -eq (Bookmark '作業資料') }
  Assert (Test-Path -LiteralPath $a) 'ブックマーク削除で実フォルダーも削除した'
  'PASS: ブックマークの改名・削除'
+ Go '左' $a
+ Invoke 'Sidebar.AddBookmark'; Invoke 'Sidebar.AddBookmark'
+ Assert (@((Elements) | Where-Object { $_.Current.AutomationId -like 'Sidebar.Bookmark.*' -and $_.Current.Name -eq '日本語 A' }).Count -eq 1) '削除後の再登録または重複防止に失敗した'
+ 'PASS: 削除後に同じ場所を再登録でき、重複登録は増えない'
  $driveId='Sidebar.Drive.'+[IO.Path]::GetPathRoot($trial)
  Wait-Until { $null -ne (Find $driveId) -and (Find $driveId).Current.Name -match '\d+\.\dGiB/\d+\.\dGiB' }
  Assert ((Find $driveId).Current.HelpText -like '*空き容量 / 総容量*') '容量の意味を確認できない'
@@ -196,6 +201,6 @@ try {
  if($script:window){try{$script:window.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()}catch{}}
  if(!$app.HasExited){$app.CloseMainWindow() | Out-Null}
  if(!$app.WaitForExit(5000)){Write-Warning ('検証アプリの終了待機に失敗: '+$app.Id)}
- $env:EXPLORER_COVER_SHORTCUTS=$oldConfig; $env:EXPLORER_COVER_LOG=$oldLog
+ $env:EXPLORER_COVER_SHORTCUTS=$oldConfig; $env:EXPLORER_COVER_LOG=$oldLog; $env:EXPLORER_COVER_STATE=$oldState
  Write-Output ('検証ログ: '+$log)
 }
