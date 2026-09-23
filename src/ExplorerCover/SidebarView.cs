@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.IO;
 using System.Windows;
 using System.Windows.Automation;
@@ -24,8 +25,12 @@ public sealed class SidebarView : DockPanel, IDisposable
         TabCloseButton.XButton1 => MouseButton.XButton1, TabCloseButton.XButton2 => MouseButton.XButton2, _ => null
     };
     private readonly StackPanel bookmarks = new();
+    private sealed record BookmarkRow(Button Button, CancellationTokenSource Loading);
+    private readonly Dictionary<BookmarkState, BookmarkRow> bookmarkRows = [];
     private readonly StackPanel drives = new();
-    private readonly ShellIcons icons = new();
+    private readonly ShellIcons? icons;
+    private readonly Func<string?, Task<ImageSource?>> getIcon;
+    private readonly CancellationTokenSource lifetime = new();
     private bool disposed;
     private readonly TextBlock driveError = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.Firebrick, Visibility = Visibility.Collapsed };
     private readonly Dictionary<string, (Button Button, TextBlock Name, TextBlock Capacity, ProgressBar Bar, Image Icon)> driveRows = new(StringComparer.OrdinalIgnoreCase);
@@ -34,9 +39,15 @@ public sealed class SidebarView : DockPanel, IDisposable
 
     public SidebarView(WorkspaceState workspace, Action<string> navigate, bool initializeBookmarks = true,
         Action<string>? openInNewTab = null, MouseSettings? mouseSettings = null)
+        : this(workspace, navigate, initializeBookmarks, openInNewTab, mouseSettings, null) { }
+
+    internal SidebarView(WorkspaceState workspace, Action<string> navigate, bool initializeBookmarks,
+        Action<string>? openInNewTab, MouseSettings? mouseSettings, Func<string?, Task<ImageSource?>>? getIcon)
     {
         this.workspace = workspace; this.navigate = navigate;
         this.openInNewTab = openInNewTab;
+        if (getIcon == null) { icons = new(); this.getIcon = icons.GetAsync; }
+        else this.getIcon = getIcon;
         ApplyMouseSettings(mouseSettings ?? new());
         Background = new SolidColorBrush(Color.FromRgb(248, 249, 251));
         var body = new StackPanel { Margin = new Thickness(8, 8, 8, 12) };
@@ -49,7 +60,6 @@ public sealed class SidebarView : DockPanel, IDisposable
         monitor.PathsChanged += ReconcileDrives;
         monitor.Updated += UpdateDrive;
         monitor.Failed += message => { driveError.Text = "ドライブ一覧を取得できません: " + message; driveError.Visibility = Visibility.Visible; };
-        ((System.Collections.Specialized.INotifyCollectionChanged)workspace.Sidebar.Bookmarks).CollectionChanged += BookmarksChanged;
         if (initializeBookmarks && workspace.Sidebar.Bookmarks.Count == 0)
         {
             var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -57,7 +67,8 @@ public sealed class SidebarView : DockPanel, IDisposable
             var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
             if (!string.IsNullOrEmpty(desktop)) workspace.Sidebar.Add(Path.GetFileName(desktop.TrimEnd('\\')), desktop);
         }
-        RenderBookmarks();
+        foreach (var bookmark in workspace.Sidebar.Bookmarks) InsertBookmark(bookmark, bookmarks.Children.Count);
+        ((INotifyCollectionChanged)workspace.Sidebar.Bookmarks).CollectionChanged += BookmarksChanged;
         Loaded += Start;
         timer.Tick += Refresh;
     }
@@ -110,41 +121,78 @@ public sealed class SidebarView : DockPanel, IDisposable
         header.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(75, 86, 101)), VerticalAlignment = VerticalAlignment.Center });
         return header;
     }
-    private void BookmarksChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => RenderBookmarks();
+    private void BookmarksChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (disposed) return;
+        if (e.Action == NotifyCollectionChangedAction.Add)
+        {
+            var index = e.NewStartingIndex;
+            foreach (BookmarkState bookmark in e.NewItems!) InsertBookmark(bookmark, index++);
+        }
+        else if (e.Action == NotifyCollectionChangedAction.Remove)
+        {
+            foreach (BookmarkState bookmark in e.OldItems!) RemoveBookmark(bookmark);
+        }
+        else
+        {
+            // 現在のモデルは追加・削除のみ。並べ替えやResetにも既存行を再利用する。
+            var current = workspace.Sidebar.Bookmarks.ToHashSet();
+            foreach (var bookmark in bookmarkRows.Keys.Where(b => !current.Contains(b)).ToArray()) RemoveBookmark(bookmark);
+            for (var index = 0; index < workspace.Sidebar.Bookmarks.Count; index++)
+            {
+                var bookmark = workspace.Sidebar.Bookmarks[index];
+                if (!bookmarkRows.TryGetValue(bookmark, out var row)) InsertBookmark(bookmark, index);
+                else if (!ReferenceEquals(bookmarks.Children[index], row.Button))
+                {
+                    bookmarks.Children.Remove(row.Button);
+                    bookmarks.Children.Insert(index, row.Button);
+                }
+            }
+        }
+    }
     private void AddCurrent()
     {
         if (workspace.ActivePane.SelectedTab.CurrentPath is not string path) return;
         var name = Path.GetFileName(path.TrimEnd('\\', '/'));
         workspace.Sidebar.Add(string.IsNullOrEmpty(name) ? path : name, path);
     }
-    private void RenderBookmarks()
+    private void InsertBookmark(BookmarkState bookmark, int index)
     {
-        bookmarks.Children.Clear();
-        foreach (var bookmark in workspace.Sidebar.Bookmarks)
-        {
-            var button = MakeNavigationButton("Sidebar.Bookmark." + bookmark.Id, bookmark.Path);
-            var content = new Grid(); content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) }); content.ColumnDefinitions.Add(new ColumnDefinition());
-            var icon = new Image { Width = 16, Height = 16, HorizontalAlignment = HorizontalAlignment.Left };
-            content.Children.Add(icon);
-            var label = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-            var name = new System.Windows.Documents.Run();
-            name.SetBinding(System.Windows.Documents.Run.TextProperty, new Binding(nameof(BookmarkState.Name)) { Source = bookmark, Mode = BindingMode.OneWay });
-            label.Inlines.Add(name);
-            label.Inlines.Add(new System.Windows.Documents.Run($" ({bookmark.Path})") { Foreground = Brushes.DimGray });
-            Grid.SetColumn(label, 1); content.Children.Add(label);
-            button.Content = content;
-            button.SetBinding(ToolTipProperty, new Binding(nameof(BookmarkState.DisplayText)) { Source = bookmark });
-            button.SetBinding(AutomationProperties.HelpTextProperty, new Binding(nameof(BookmarkState.DisplayText)) { Source = bookmark });
-            button.SetBinding(AutomationProperties.NameProperty, new Binding(nameof(BookmarkState.Name)) { Source = bookmark });
-            _ = LoadIconAsync(icon, bookmark.Path);
-            var menu = new ContextMenu();
-            var rename = new MenuItem { Header = "名前を変更" };
-            rename.Click += (_, _) => Rename(bookmark);
-            var remove = new MenuItem { Header = "ブックマークを削除" };
-            remove.Click += (_, _) => workspace.Sidebar.Remove(bookmark);
-            menu.Items.Add(rename); menu.Items.Add(remove); button.ContextMenu = menu;
-            bookmarks.Children.Add(button);
-        }
+        var button = MakeNavigationButton("Sidebar.Bookmark." + bookmark.Id, bookmark.Path);
+        var content = new Grid(); content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) }); content.ColumnDefinitions.Add(new ColumnDefinition());
+        var icon = new Image { Width = 16, Height = 16, HorizontalAlignment = HorizontalAlignment.Left };
+        content.Children.Add(icon);
+        var label = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+        var name = new System.Windows.Documents.Run();
+        name.SetBinding(System.Windows.Documents.Run.TextProperty, new Binding(nameof(BookmarkState.Name)) { Source = bookmark, Mode = BindingMode.OneWay });
+        label.Inlines.Add(name);
+        label.Inlines.Add(new System.Windows.Documents.Run($" ({bookmark.Path})") { Foreground = Brushes.DimGray });
+        Grid.SetColumn(label, 1); content.Children.Add(label);
+        button.Content = content;
+        button.SetBinding(ToolTipProperty, new Binding(nameof(BookmarkState.DisplayText)) { Source = bookmark });
+        button.SetBinding(AutomationProperties.HelpTextProperty, new Binding(nameof(BookmarkState.DisplayText)) { Source = bookmark });
+        button.SetBinding(AutomationProperties.NameProperty, new Binding(nameof(BookmarkState.Name)) { Source = bookmark });
+        var loading = new CancellationTokenSource();
+        var menu = new ContextMenu();
+        var rename = new MenuItem { Header = "名前を変更" };
+        rename.Click += (_, _) => Rename(bookmark);
+        var remove = new MenuItem { Header = "ブックマークを削除" };
+        remove.Click += (_, _) => workspace.Sidebar.Remove(bookmark);
+        menu.Items.Add(rename); menu.Items.Add(remove); button.ContextMenu = menu;
+        bookmarkRows.Add(bookmark, new(button, loading));
+        bookmarks.Children.Insert(index, button);
+        _ = SidebarIconLoader.LoadAsync(icon, bookmark.Path, getIcon, loading.Token);
+    }
+    private void RemoveBookmark(BookmarkState bookmark)
+    {
+        if (!bookmarkRows.Remove(bookmark, out var row)) return;
+        ReleaseBookmark(row);
+        bookmarks.Children.Remove(row.Button);
+    }
+    private static void ReleaseBookmark(BookmarkRow row)
+    {
+        row.Loading.Cancel(); row.Loading.Dispose();
+        row.Button.ContextMenu!.IsOpen = false;
     }
     private void Rename(BookmarkState bookmark)
     {
@@ -217,7 +265,7 @@ public sealed class SidebarView : DockPanel, IDisposable
         {
             row.Button.Visibility = Visibility.Visible;
             row.Name.Text = drive.Name;
-            if (row.Icon.Tag == null) { row.Icon.Tag = drive.Path; _ = LoadIconAsync(row.Icon, drive.Path); }
+            if (row.Icon.Tag == null) { row.Icon.Tag = drive.Path; _ = SidebarIconLoader.LoadAsync(row.Icon, drive.Path, getIcon, lifetime.Token); }
         }
         row.Capacity.Text = drive.TotalBytes is long total && drive.FreeBytes is long free ? $"{FormatBytes(free)}/{FormatBytes(total)}" : "—";
         row.Bar.Value = drive.UsedPercent;
@@ -230,23 +278,16 @@ public sealed class SidebarView : DockPanel, IDisposable
     {
         return $"{bytes / 1073741824.0:F1}GiB";
     }
-    private async Task LoadIconAsync(Image image, string path)
-    {
-        if (image.Source == null)
-        {
-            var fallback = await icons.GetAsync(null);
-            if (disposed) return;
-            image.Source = fallback;
-        }
-        var actual = await icons.GetAsync(path);
-        if (!disposed && actual != null) image.Source = actual;
-    }
     private void Start(object sender, RoutedEventArgs e) { timer.Start(); _ = monitor.RefreshAsync(); }
     private void Refresh(object? sender, EventArgs e) => _ = monitor.RefreshAsync();
     public void Dispose()
     {
+        if (disposed) return;
+        disposed = true;
         Loaded -= Start; timer.Stop(); timer.Tick -= Refresh; monitor.Dispose();
-        disposed = true; icons.Dispose();
-        ((System.Collections.Specialized.INotifyCollectionChanged)workspace.Sidebar.Bookmarks).CollectionChanged -= BookmarksChanged;
+        ((INotifyCollectionChanged)workspace.Sidebar.Bookmarks).CollectionChanged -= BookmarksChanged;
+        foreach (var row in bookmarkRows.Values) ReleaseBookmark(row);
+        bookmarkRows.Clear(); bookmarks.Children.Clear();
+        lifetime.Cancel(); lifetime.Dispose(); icons?.Dispose();
     }
 }

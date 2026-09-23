@@ -113,6 +113,13 @@ try {
  Invoke 'Sidebar.AddBookmark'; Invoke 'Sidebar.AddBookmark'
  Assert (@((Elements) | Where-Object { $_.Current.AutomationId -like 'Sidebar.Bookmark.*' -and $_.Current.Name -eq '日本語 A' }).Count -eq 1) '重複したブックマークを作成した'
  Go '左' $b
+ $kept=Bookmark '日本語 A'; $keptId=$kept.GetRuntimeId() -join ','; $kept.SetFocus()
+ Wait-Until { (Bookmark '日本語 A').Current.HasKeyboardFocus }
+ Invoke 'Sidebar.AddBookmark'
+ $kept=Bookmark '日本語 A'
+ Assert (($kept.GetRuntimeId() -join ',') -eq $keptId) '別の登録の追加で既存行を作り直した'
+ $otherId=(Bookmark 'B').GetRuntimeId() -join ','
+ 'PASS: 別のブックマーク追加でも既存行の識別子を保持'
  (Find '右Address').SetFocus(); Press @(0x11,0x54); At '右' $right
  Go '右' $c
  $bookmark=Bookmark '日本語 A'; $bookmark.SetFocus()
@@ -149,6 +156,7 @@ try {
  Wait-Until { $null -ne (Menu 'ブックマークを削除') }
  (Menu 'ブックマークを削除').GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
  Wait-Until { $null -eq (Bookmark '作業資料') }
+ Assert (((Bookmark 'B').GetRuntimeId() -join ',') -eq $otherId) '別の登録の削除で既存行を作り直した'
  Assert (Test-Path -LiteralPath $a) 'ブックマーク削除で実フォルダーも削除した'
  'PASS: ブックマークの改名・削除'
  Go '左' $a
@@ -168,8 +176,9 @@ try {
  Go '右' $right; Go '左' $left
   'PASS: ドライブ容量・使用率表示、更新と対象タブへのルート移動'
   (Find $driveId).SetFocus()
+  Wait-Until { (Find $driveId).Current.HasKeyboardFocus }
   Start-Sleep -Seconds 11
-  Assert ((Find $driveId).Current.HasKeyboardFocus) '自動更新でサイドバーのフォーカスを失った'
+  Assert ((Find $driveId).Current.HasKeyboardFocus) ('自動更新でサイドバーのフォーカスを失った: '+[System.Windows.Automation.AutomationElement]::FocusedElement.Current.ProcessId+' '+[System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId)
   $rect=(Find 'Sidebar.Splitter').Current.BoundingRectangle
   Write-Output ('境界（変更前）: '+$rect)
   $hit=[System.Windows.Automation.AutomationElement]::FromPoint([System.Windows.Point]::new($rect.X+2,$rect.Y+100))
