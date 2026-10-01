@@ -23,6 +23,7 @@
     <InternalsVisibleTo Include="ExplorerCover.Selection.Tests" />
     <InternalsVisibleTo Include="ExplorerCover.Persistence.Tests" />
     <InternalsVisibleTo Include="ExplorerCover.Sidebar.Tests" />
+    <InternalsVisibleTo Include="ExplorerCover.TabDrop.Tests" />
     <ProjectReference Include="..\ExplorerCover.Core\ExplorerCover.Core.csproj" />
   </ItemGroup>
 </Project>

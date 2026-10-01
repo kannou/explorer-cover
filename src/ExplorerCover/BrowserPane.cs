@@ -41,7 +41,7 @@ public sealed class BrowserPane : Grid, IDisposable
     {
         State = state; this.commands = commands; this.label = label;
         initialPath = state.SelectedTab.InitialPath;
-        tabs = new TabStrip(state, mouseSettings, CloseTab, () => commands.Execute(CommandIds.NewTab, state), label);
+        tabs = new TabStrip(state, mouseSettings, CloseTab, () => commands.Execute(CommandIds.NewTab, state), label, ShowOperationMessage);
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RowDefinitions.Add(new RowDefinition());
