@@ -66,7 +66,9 @@ internal sealed class ShellFolderDropTarget(IShellDropTarget target) : IDisposab
         var effect = (uint)allowed;
         // Drop自体がDragLeave相当の後始末を行う。
         entered = false;
+        DiagnosticLog.Write("Shell drop started");
         var hr = target.Drop(data, (uint)keys, Point(screen), ref effect);
+        DiagnosticLog.Write($"Shell drop returned: HRESULT=0x{hr:X8}");
         Marshal.ThrowExceptionForHR(hr);
         if (hr == 0x40101) return DragDropEffects.None; // DRAGDROP_S_CANCEL
         return (DragDropEffects)effect & allowed;

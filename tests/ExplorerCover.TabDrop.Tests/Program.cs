@@ -81,12 +81,12 @@ internal static class Program
         public readonly TabStrip Strip;
         public readonly RadioButton First, Second;
         private readonly HwndSource source;
-        public Harness(Func<string, ShellFolderDropTarget>? factory = null, double width = 500)
+        public Harness(Func<string, ShellFolderDropTarget>? factory = null, double width = 500, Func<string[], string, Task<bool>>? startCopy = null)
         {
             Other = State.AddTab(@"D:\other");
             Strip = new(State, new MouseSettings(), _ => throw new Exception("終了操作が発火した"),
                 () => throw new Exception("追加操作が発火した"), "検証", Errors.Add, factory ?? (path =>
-                { var target = new FakeTarget(); Targets.Add((path, target)); return new(target); }));
+                { var target = new FakeTarget(); Targets.Add((path, target)); return new(target); }), startCopy);
             First = new() { Content = "selected", Width = 100, Height = 30 };
             Second = new() { Content = "other", Width = 100, Height = 30 };
             Strip.Add(State.SelectedTab, First); Strip.Add(Other, Second);
@@ -199,6 +199,54 @@ internal static class Program
             h.Send(DragDrop.PreviewDragLeaveEvent, new Point(145, 15));
             var offset = scroll.HorizontalOffset; await Task.Delay(120);
             Assert(scroll.HorizontalOffset == offset, "取消後もスクロールしている");
+        });
+
+        await Check("WSL宛てのコピーは転送の完了前に返り、確定した宛先で実行する", async () =>
+        {
+            var completion = new TaskCompletionSource<bool>();
+            string[]? sources = null; string? destination = null;
+            using var h = new Harness(startCopy: (paths, path) => { sources = paths; destination = path; return completion.Task; });
+            h.Other.NavigationSucceeded(@"\\wsl.localhost\Ubuntu-24.04\tmp\test");
+            var result = h.Send(DragDrop.PreviewDropEvent, h.At(h.Second), Files(@"D:\file.txt", @"D:\folder"), DragDropKeyStates.ControlKey);
+            h.Other.NavigationSucceeded(@"D:\changed");
+            Assert(result.Effects == DragDropEffects.Copy && !completion.Task.IsCompleted, "完了までドロップを待っている");
+            Assert(destination == @"\\wsl.localhost\Ubuntu-24.04\tmp\test" && sources!.SequenceEqual(new[] { @"D:\file.txt", @"D:\folder" }), "宛先または複数のコピー元が不正");
+            Assert(h.Targets.Single().Target.Drops == 0 && h.Targets.Single().Target.Leaves == 1, "UIで転送またはドラッグの解除漏れ");
+            completion.SetResult(false); await Task.Yield();
+            Assert(h.Errors.Count == 0, "取消をエラー表示した");
+        });
+        await Check("WSL別名とWSLからのコピーも別STAへ渡す", () => Sync(() =>
+        {
+            foreach (var (source, destination) in new[] { (@"D:\file.txt", @"\\wsl$\Ubuntu\tmp"), (@"\\wsl.localhost\Ubuntu\tmp\file.txt", @"D:\other") })
+            {
+                var called = false;
+                using var h = new Harness(startCopy: (_, _) => { called = true; return Task.FromResult(true); });
+                h.Other.NavigationSucceeded(destination);
+                var result = h.Send(DragDrop.PreviewDropEvent, h.At(h.Second), Files(source), DragDropKeyStates.ControlKey);
+                Assert(called && result.Effects == DragDropEffects.Copy && h.Targets.Single().Target.Drops == 0, "WSLコピーの経路が不正");
+            }
+        }));
+        await Check("WSLでも移動・右ドラッグは元のShellの結果を返す", () => Sync(() =>
+        {
+            foreach (var keys in new[] { DragDropKeyStates.ShiftKey, DragDropKeyStates.RightMouseButton })
+            {
+                using var h = new Harness(startCopy: (_, _) => throw new Exception("移動または右ドラッグを先行受理した"));
+                h.Other.NavigationSucceeded(@"\\wsl.localhost\Ubuntu\tmp");
+                h.Send(DragDrop.PreviewDragEnterEvent, h.At(h.Second));
+                if (keys == DragDropKeyStates.ShiftKey) h.Targets.Single().Target.Effect = (uint)DragDropEffects.Move;
+                var result = h.Send(DragDrop.PreviewDropEvent, h.At(h.Second), keys: keys);
+                Assert(h.Targets.Single().Target.Drops == 1 && result.Effects != DragDropEffects.None, "Shellに委譲していない");
+            }
+        }));
+        await Check("別STAコピーの失敗は元データの削除を指示せず、エラー表示する", async () =>
+        {
+            var completion = new TaskCompletionSource<bool>();
+            using var h = new Harness(startCopy: (_, _) => completion.Task);
+            h.Other.NavigationSucceeded(@"\\wsl$\Ubuntu\tmp");
+            var result = h.Send(DragDrop.PreviewDropEvent, h.At(h.Second), keys: DragDropKeyStates.ControlKey);
+            completion.SetException(new IOException("コピー失敗"));
+            await Until(() => h.Errors.Count == 1);
+            Assert(result.Effects == DragDropEffects.Copy && h.Errors.Single().StartsWith("コピーできません:"), "結果または失敗表示が不正");
         });
 
         var root = Path.Combine(Environment.CurrentDirectory, "artifacts", "tab-drop-" + Guid.NewGuid().ToString("N"));

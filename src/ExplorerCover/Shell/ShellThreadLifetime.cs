@@ -33,6 +33,17 @@ internal sealed class ShellThreadLifetime : IDisposable
             await Task.Delay(50); // 他のプロセスがクリップボードを開いている間は再試行する。
         }
         if (ReferenceCount <= 1) return;
+        // WPFのドロップ受付が保持していたDataObjectのRCWは、ウィンドウ破棄後も
+        // 回収までShellを参照する。ラッパーと内側のRCWを順に回収するため二巡する。
+        await Task.Delay(50); // Closedのコールバックから戻り、HWNDの破棄を完了させる。
+        for (var pass = 0; pass < 2 && ReferenceCount > 1; pass++)
+        {
+            GC.Collect();
+            // FinalizerをUIで同期的に待つとCOMのSTA呼び戻しと相互待ちになる。
+            await Task.Run(GC.WaitForPendingFinalizers);
+            Marshal.CleanupUnusedObjectsInCurrentContext();
+        }
+        if (ReferenceCount <= 1) return;
         DiagnosticLog.Write($"Waiting for Shell operations before shutdown: references={ReferenceCount}");
         // 同期WaitやJoinは使わない。ShellのCOM呼び戻しと進捗画面を処理し続ける。
         while (ReferenceCount > 1) await Task.Delay(50);
