@@ -38,7 +38,12 @@ public partial class App : Application
         if (store != null) _ = new WorkspacePersistence(window, store);
         else window.Title += "（一時セッション）";
         // Closedでビューを先に解放する。表示中のビューもShellのスレッド参照を持つ。
-        window.Closed += async (_, _) => { await shellLifetime.WaitForIdleAsync(); Shutdown(); };
+        window.Closed += async (_, _) =>
+        {
+            await ShellCopyOperation.WaitForIdleAsync();
+            await shellLifetime.WaitForIdleAsync();
+            Shutdown();
+        };
         MainWindow = window;
         window.Show();
         DiagnosticLog.Write("Window shown");

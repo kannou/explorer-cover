@@ -21,6 +21,7 @@ internal sealed class TabStrip : Grid, IDisposable
     private readonly Action add;
     private readonly Action<string> showDropError;
     private readonly Func<string, ShellFolderDropTarget> createDropTarget;
+    private readonly Func<string[], string, Task<bool>> startCopy;
     private MouseButton? closeButton;
     private readonly StackPanel headers = new() { Orientation = Orientation.Horizontal };
     private readonly Dictionary<TabState, RadioButton> buttons = [];
@@ -45,11 +46,12 @@ internal sealed class TabStrip : Grid, IDisposable
     private DragDropKeyStates fileKeys;
     private DragDropEffects fileAllowed;
 
-    public TabStrip(PaneState state, MouseSettings settings, Action<TabState> close, Action add, string label, Action<string> showDropError, Func<string, ShellFolderDropTarget>? createDropTarget = null)
+    public TabStrip(PaneState state, MouseSettings settings, Action<TabState> close, Action add, string label, Action<string> showDropError, Func<string, ShellFolderDropTarget>? createDropTarget = null, Func<string[], string, Task<bool>>? startCopy = null)
     {
         this.state = state; this.close = close; this.add = add;
         this.showDropError = showDropError;
         this.createDropTarget = createDropTarget ?? ShellFolderDropTarget.Create;
+        this.startCopy = startCopy ?? ShellCopyOperation.Start;
         ApplySettings(settings);
         Background = Brushes.Transparent; ClipToBounds = true; AllowDrop = true;
         scroll = new ScrollViewer { Content = headers, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Background = Brushes.Transparent, CanContentScroll = false };
@@ -163,12 +165,30 @@ internal sealed class TabStrip : Grid, IDisposable
         {
             if (e.Effects != DragDropEffects.None && fileTarget != null && fileData != null)
             {
-                e.Effects = fileTarget.Drop(fileData, e.KeyStates, PointToScreen(filePoint), e.AllowedEffects);
+                if (e.Effects == DragDropEffects.Copy &&
+                    (e.KeyStates & DragDropKeyStates.RightMouseButton) == 0 &&
+                    e.Data.GetData(DataFormats.FileDrop, false) is string[] { Length: > 0 } paths &&
+                    (ShellCopyOperation.IsWslPath(filePath!) || paths.Any(ShellCopyOperation.IsWslPath)))
+                {
+                    ObserveCopy(startCopy(paths, filePath!));
+                    // コピーの受理を返す。移動の成功や元データの削除を通知しない。
+                    e.Effects = DragDropEffects.Copy;
+                }
+                else e.Effects = fileTarget.Drop(fileData, e.KeyStates, PointToScreen(filePoint), e.AllowedEffects);
                 DiagnosticLog.Write($"Tab file drop: {filePath}; effect={e.Effects}");
             }
         }
         catch (Exception ex) when (IsDropError(ex)) { e.Effects = DragDropEffects.None; ReportDropError(ex); }
         finally { ClearFileDrag(); }
+    }
+    private async void ObserveCopy(Task<bool> operation)
+    {
+        try { await operation; }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write("Tab background copy failed: " + ex.Message);
+            if (!disposed) showDropError("コピーできません: " + ex.Message);
+        }
     }
     private static bool IsDropError(Exception ex) => ex is COMException or ArgumentException or IOException or UnauthorizedAccessException;
     private void ReportDropError(Exception ex)
