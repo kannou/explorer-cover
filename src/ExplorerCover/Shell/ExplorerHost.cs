@@ -274,7 +274,8 @@ public sealed class ExplorerHost : HwndHost
             popup = CreatePopupMenu();
             if (popup == 0) throw new Win32Exception(Marshal.GetLastWin32Error());
             Marshal.ThrowExceptionForHR(menu.QueryContextMenu(popup, 0, 1, 0x7FFF, 0x10)); // CMF_CANRENAME
-            var info = new InvokeCommandInfo { Size = Marshal.SizeOf<InvokeCommandInfo>(), Window = new WindowInteropHelper(Window.GetWindow(this)).Handle, Verb = verb, Show = 1 };
+            var info = new InvokeCommandInfo { Size = Marshal.SizeOf<InvokeCommandInfo>(), Mask = verb == "paste" ? 0x00100000u : 0, // CMIC_MASK_ASYNCOK
+                Window = new WindowInteropHelper(Window.GetWindow(this)).Handle, Verb = verb, Show = 1 };
             menu.InvokeCommand(ref info);
         }
         finally
