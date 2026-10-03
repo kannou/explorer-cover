@@ -2,13 +2,17 @@ using System.Windows;
 using ExplorerCover.Commands;
 using ExplorerCover.Core;
 using System.IO;
+using ExplorerCover.Shell;
 
 namespace ExplorerCover;
 
 public partial class App : Application
 {
+    private ShellThreadLifetime? shellLifetime;
     protected override async void OnStartup(StartupEventArgs e)
     {
+        shellLifetime = new();
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
         base.OnStartup(e);
         DiagnosticLog.Write("Startup");
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -33,6 +37,8 @@ public partial class App : Application
         WindowLayout.RestoreOnShow(window, snapshot?.Window);
         if (store != null) _ = new WorkspacePersistence(window, store);
         else window.Title += "（一時セッション）";
+        // Closedでビューを先に解放する。表示中のビューもShellのスレッド参照を持つ。
+        window.Closed += async (_, _) => { await shellLifetime.WaitForIdleAsync(); Shutdown(); };
         MainWindow = window;
         window.Show();
         DiagnosticLog.Write("Window shown");
@@ -40,6 +46,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        shellLifetime?.Dispose();
         DiagnosticLog.Write($"Exit: {e.ApplicationExitCode}");
         base.OnExit(e);
     }
